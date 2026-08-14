@@ -175,6 +175,8 @@ async fn handle_session_rename(agent: &MvpAgent, args: &acp::ExtRequest) -> ExtR
     // Update session search index with new title
     crate::session::storage::search::notify_session_updated(&info.id.to_string(), &info.cwd);
 
+    let _ = crate::peers::rename_for_session(&req.session_id, &req.title);
+
     // Send a SessionSummaryGenerated notification so the TUI updates its title
     notify_session_title(agent, session_id, &req.title).await;
 
@@ -353,7 +355,7 @@ async fn notify_session_title_unpinned(agent: &MvpAgent, session_id: acp::Sessio
 /// Notify connected clients of a session's new title via
 /// `SessionSummaryGenerated`. Manual-rename fan-out stamps
 /// `_meta.x.ai/titleIsManual` so followers can set `display_name`.
-async fn notify_session_title(agent: &MvpAgent, session_id: acp::SessionId, title: &str) {
+pub(crate) async fn notify_session_title(agent: &MvpAgent, session_id: acp::SessionId, title: &str) {
     use crate::extensions::notification::{
         SessionNotification, SessionUpdate, title_is_manual_meta,
     };

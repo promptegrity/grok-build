@@ -5,6 +5,7 @@
 //! IO plumbing: terminal events, ACP channel, spawned task results,
 //! animation ticks, and hot-reloadable config changes.
 
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use anyhow::Context as _;
@@ -28,6 +29,17 @@ use super::session_load_barrier::{
     AcpDrainArm, SessionLoadAcpTick, SessionLoadBarrier, session_load_agent_id,
 };
 use super::{PagerArgs, PagerTerminal, acp_handler, dispatch, effects};
+
+/// CLI `--name` captured once at event-loop start for session create/load meta.
+static STARTUP_SESSION_NAME: OnceLock<Option<String>> = OnceLock::new();
+
+fn startup_session_name() -> Option<String> {
+    STARTUP_SESSION_NAME.get().cloned().flatten()
+}
+
+fn set_startup_session_name(name: Option<String>) {
+    let _ = STARTUP_SESSION_NAME.set(name);
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct TimedInputEvent {
@@ -951,6 +963,12 @@ pub(crate) async fn run(
     app.plan_mode = !args.no_plan;
     app.subagents = !args.no_subagents;
     app.ask_user = !args.no_ask_user;
+    set_startup_session_name(
+        args.session_name
+            .as_ref()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+    );
     app.chat_mode = args.chat();
     #[cfg(feature = "local-workspace")]
     {
@@ -4092,6 +4110,7 @@ pub(crate) fn session_flags_for_effects(
         screen_mode_label: Some(app.screen_mode.meta_label()),
         is_api_key_auth: app.is_api_key_auth,
         resume_local_miss: app.resume_local_miss.clone(),
+        session_name: startup_session_name(),
     }
 }
 

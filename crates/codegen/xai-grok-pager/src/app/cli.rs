@@ -600,6 +600,12 @@ pub struct PagerArgs {
     /// `--resume` / `--continue` instead.
     #[arg(short = 's', long = "session-id", value_name = "SESSION_ID")]
     pub session_id: Option<String>,
+    /// Set a display name for this session (peer messaging + title bar).
+    /// Shown in `/peers`, used as the address for `send_message`, and applied
+    /// as a manual session title (same as `/rename`). If another live session
+    /// already uses the name, a variant such as `api-2` is allocated.
+    #[arg(short = 'n', long = "name", value_name = "NAME")]
+    pub session_name: Option<String>,
     /// When resuming (`--resume` / `--continue`), create a new session ID
     /// instead of reusing the original (optionally set via `--session-id`).
     #[arg(long = "fork-session")]
@@ -1163,6 +1169,15 @@ mod tests {
             ResumeTarget::SessionId("old".to_string())
         );
     }
+
+    #[test]
+    fn name_flag_parses() {
+        let args = PagerArgs::try_parse_from(["grok", "--name", "api-worker"]).unwrap();
+        assert_eq!(args.session_name.as_deref(), Some("api-worker"));
+        let short = PagerArgs::try_parse_from(["grok", "-n", "frontend"]).unwrap();
+        assert_eq!(short.session_name.as_deref(), Some("frontend"));
+    }
+
     /// The screen-mode flags are mutually exclusive: the pair exists so one
     /// can override the other's sticky config value, so accepting both in one
     /// invocation would be ambiguous.

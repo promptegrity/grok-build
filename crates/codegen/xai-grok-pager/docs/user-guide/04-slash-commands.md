@@ -103,6 +103,14 @@ Rename the current session. Alias: `/title`.
 
 `--auto` unpins a manual title and lets auto-titling resume. It applies to Build sessions only — chat conversations have no local auto-titler. It must be the only argument (`/rename --auto Something` is an error). A session cannot be named `--auto` via this command; use the dashboard rename editor (`Ctrl+R`) for that pathological case.
 
+### `/peers`
+
+```
+/peers
+```
+
+Aliases: `/list-agents`, `/list_agents`. Lists live Grok sessions on this machine that can exchange plain-text messages. See [Cross-Session Messaging](25-cross-session-messaging.md).
+
 ---
 
 ## Model and Mode

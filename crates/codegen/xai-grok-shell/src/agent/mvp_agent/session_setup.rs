@@ -498,6 +498,35 @@ impl MvpAgent {
         }
         spawn_res?;
         tracing::debug!(session_id = %session_id.0, "new_session: spawn_session_actor");
+        let preferred_peer_name = crate::peers::preferred_name_from_meta(arguments.meta.as_ref());
+        if let Some(handle) = self.resident_handle(&session_id) {
+            if let Some(ref name) = preferred_peer_name {
+                crate::peers::apply_startup_name_title(
+                    &session_info,
+                    &handle.persistence_tx,
+                    name,
+                )
+                .await;
+            }
+            let peer_name = crate::peers::start_for_session(
+                session_id.0.as_ref(),
+                cwd.as_str(),
+                preferred_peer_name.as_deref(),
+                handle.cmd_tx.clone(),
+            )
+            .await;
+            if let Some(ref name) = peer_name {
+                tracing::info!(session_id = %session_id.0, peer_name = %name, "peer messaging started");
+                if preferred_peer_name.is_some() {
+                    crate::extensions::session_admin::notify_session_title(
+                        self,
+                        session_id.clone(),
+                        name,
+                    )
+                    .await;
+                }
+            }
+        }
         #[cfg(feature = "local-workspace")]
         if local_workspace_intent_present(arguments.meta.as_ref()) {
             self.mark_local_workspace_bound(session_id.clone());
@@ -952,6 +981,19 @@ impl MvpAgent {
             cwd.as_path(),
             remote_settings.as_ref(),
         );
+        {
+            let preferred = crate::peers::preferred_name_from_meta(request_meta.as_ref())
+                .or_else(|| summary.display_title_opt());
+            if let Some(handle) = self.resident_handle(&session_id) {
+                let _ = crate::peers::start_for_session(
+                    session_id.0.as_ref(),
+                    cwd.as_str(),
+                    preferred.as_deref(),
+                    handle.cmd_tx.clone(),
+                )
+                .await;
+            }
+        }
         self.heal_orphaned_subagents(&session_id, &unfinished_subagents)
             .await;
         self.restore_persisted_model(&session_id, &summary).await;

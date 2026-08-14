@@ -337,6 +337,8 @@ pub(crate) struct SessionFlags {
     /// local id/title resolution. Worktree failure messages append the
     /// no-match hint only when the failing target equals this value.
     pub resume_local_miss: Option<String>,
+    /// CLI `--name` / `-n`: preferred peer + manual session title.
+    pub session_name: Option<String>,
 }
 impl SessionFlags {
     /// Resolve the agent profile name from the flags.
@@ -397,6 +399,12 @@ impl SessionFlags {
                 self.auto_mode
             )),
         );
+        if let Some(ref name) = self.session_name {
+            let trimmed = name.trim();
+            if !trimmed.is_empty() {
+                meta.insert("sessionName".into(), serde_json::json!(trimmed));
+            }
+        }
         if meta.is_empty() { None } else { Some(meta) }
     }
 }

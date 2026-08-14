@@ -129,6 +129,22 @@ Rename the current session's title:
 
 Alias: `/title`. `/rename --auto` clears a manual title and re-enables auto-titling.
 
+You can also set the name at startup with `grok --name <name>` (or `-n`). That name is used for [cross-session messaging](25-cross-session-messaging.md) as well as the title bar.
+
+---
+
+## Messaging other sessions
+
+Independent Grok sessions on the same machine can exchange plain-text messages. See [Cross-Session Messaging](25-cross-session-messaging.md):
+
+```bash
+grok --name api
+# elsewhere:
+grok --name frontend
+# then in either session:
+/peers
+```
+
 ---
 
 ## The /rewind Command

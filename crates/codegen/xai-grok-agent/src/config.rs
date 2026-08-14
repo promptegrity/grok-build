@@ -281,6 +281,8 @@ fn default_grok_build_toolset() -> ToolServerConfig {
             (&use_tool::UseTool).into(),
             (&grok_build::UpdateGoalTool).into(),
             (&grok_build::WorkflowTool).into(),
+            (&grok_build::ListPeersTool).into(),
+            (&grok_build::SendMessageTool).into(),
         ],
         behavior_preset: None,
     }
@@ -302,6 +304,8 @@ fn grok_build_concise_toolset() -> ToolServerConfig {
             (&grok_build::MonitorTool).into(),
             (&grok_build::UpdateGoalTool).into(),
             (&grok_build::WorkflowTool).into(),
+            (&grok_build::ListPeersTool).into(),
+            (&grok_build::SendMessageTool).into(),
         ],
         behavior_preset: None,
     }
@@ -332,6 +336,8 @@ pub fn grok_build_hashline_toolset(
         (&use_tool::UseTool).into(),
         (&grok_build::UpdateGoalTool).into(),
         (&grok_build::WorkflowTool).into(),
+        (&grok_build::ListPeersTool).into(),
+        (&grok_build::SendMessageTool).into(),
     ]);
     ToolServerConfig {
         tools,
@@ -417,6 +423,8 @@ fn grok_build_plan_toolset() -> ToolServerConfig {
             (&use_tool::UseTool).into(),
             (&grok_build::UpdateGoalTool).into(),
             (&grok_build::WorkflowTool).into(),
+            (&grok_build::ListPeersTool).into(),
+            (&grok_build::SendMessageTool).into(),
             // Plan mode tools
             (&grok_build::EnterPlanModeTool).into(),
             (&grok_build::ExitPlanModeTool).into(),

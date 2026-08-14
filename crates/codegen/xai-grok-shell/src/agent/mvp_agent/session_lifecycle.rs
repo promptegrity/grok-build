@@ -73,6 +73,7 @@ impl MvpAgent {
         }
         drop(intake_guard);
         self.remove_session_terminal(id, SessionLiveState::Completed);
+        crate::peers::stop_for_session(id.0.as_ref());
         self.drain_old_session_thread_within(id, stage_budget(deadline, DRAIN_OLD_THREAD_WAIT))
             .await;
         self.finalize_session_replica(id);
@@ -107,6 +108,7 @@ impl MvpAgent {
         let resident = self.hard_stop_resident(id, CancelTrigger::SessionDelete);
         if resident {
             self.remove_session_terminal(id, SessionLiveState::Completed);
+            crate::peers::stop_for_session(id.0.as_ref());
         }
         xai_grok_tools::implementations::grok_build::task::backend::ChannelBackend::new(
             self.subagent_event_tx.clone(),

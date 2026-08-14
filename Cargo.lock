@@ -13750,6 +13750,7 @@ dependencies = [
  "xai-grok-pager-diff",
  "xai-grok-pager-pty-harness",
  "xai-grok-pager-render",
+ "xai-grok-peers",
  "xai-grok-plugin-marketplace",
  "xai-grok-sandbox",
  "xai-grok-shell",
@@ -13919,6 +13920,23 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "xai-grok-peers"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "fs2",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "windows 0.61.3",
+ "xai-grok-config",
 ]
 
 [[package]]
@@ -14199,6 +14217,7 @@ dependencies = [
  "xai-grok-memory",
  "xai-grok-models",
  "xai-grok-paths",
+ "xai-grok-peers",
  "xai-grok-plugin-marketplace",
  "xai-grok-sampler",
  "xai-grok-sampling-types",
@@ -14446,6 +14465,7 @@ dependencies = [
  "xai-grok-config",
  "xai-grok-env",
  "xai-grok-extra-ca",
+ "xai-grok-peers",
  "xai-grok-sandbox",
  "xai-grok-test-support",
  "xai-grok-tools-api",

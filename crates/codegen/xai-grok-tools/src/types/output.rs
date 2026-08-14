@@ -648,6 +648,8 @@ pub enum ToolOutput {
     SchedulerList(crate::implementations::grok_build::scheduler::list::SchedulerListOutput),
     UpdateGoal(crate::implementations::grok_build::update_goal::UpdateGoalOutput),
     Workflow(crate::implementations::grok_build::workflow::WorkflowToolOutput),
+    ListPeers(crate::implementations::grok_build::list_peers::ListPeersOutput),
+    SendMessage(crate::implementations::grok_build::send_message::SendMessageOutput),
     /// Dynamic output for runtime-registered tools (MCP, test tools, etc.)
     Dynamic(DynamicOutput),
     /// Generic text output for tools that produce simple formatted text
@@ -996,6 +998,24 @@ impl ToolOutput {
             }
             ToolOutput::UpdateGoal(o) => o.summary.clone(),
             ToolOutput::Workflow(o) => o.message.clone(),
+            ToolOutput::ListPeers(o) => {
+                if o.peers.is_empty() {
+                    format!(
+                        "No other live peers (self: {}).",
+                        o.self_name.as_deref().unwrap_or(&o.self_session_id)
+                    )
+                } else {
+                    let mut lines = vec![format!(
+                        "Live peers (self: {}):",
+                        o.self_name.as_deref().unwrap_or(&o.self_session_id)
+                    )];
+                    for p in &o.peers {
+                        lines.push(format!("- {} ({}) cwd={}", p.name, p.short_id, p.cwd));
+                    }
+                    lines.join("\n")
+                }
+            }
+            ToolOutput::SendMessage(o) => format!("{}: {}", o.status, o.detail),
             ToolOutput::Dynamic(v) => serde_json::to_string_pretty(&v.value).unwrap_or_default(),
             ToolOutput::Text(text) => text.text.clone(),
             ToolOutput::ImageGen(m) => m.prompt_text("Image generated"),

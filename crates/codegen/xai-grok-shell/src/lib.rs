@@ -31,6 +31,7 @@ pub mod leader;
 pub mod managed_config;
 pub mod mcp_doctor;
 pub use xai_grok_models as models;
+pub mod peers;
 pub mod plugin;
 pub mod relay;
 pub mod remote;

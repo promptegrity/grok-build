@@ -2442,9 +2442,13 @@ pub(crate) async fn run(
             }
 
             Some(msg) = progress_rx.recv() => {
-                let result = TaskResult::SessionRestoreProgress {
-                    agent_id: msg.agent_id,
-                    message: msg.message,
+                let result = match msg {
+                    effects::RestoreProgressMsg::Restore { agent_id, message } => {
+                        TaskResult::SessionRestoreProgress { agent_id, message }
+                    }
+                    effects::RestoreProgressMsg::Cursor { agent_id, event } => {
+                        TaskResult::CursorProxyProgress { agent_id, event }
+                    }
                 };
                 let effs = dispatch::dispatch(Action::TaskComplete(result), &mut app);
                 if process_effects(effs, &mut tasks, &mut app, &progress_tx) {

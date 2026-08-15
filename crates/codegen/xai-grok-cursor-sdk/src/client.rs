@@ -103,8 +103,18 @@ impl CursorSdkClient {
     }
 
     pub async fn send(&self, agent_id: &str, text: &str) -> Result<SendResult, CursorSdkError> {
+        self.send_with_progress(agent_id, text, |_| {}).await
+    }
+
+    /// Send a prompt and report stream events as they arrive (status / steps / text).
+    pub async fn send_with_progress(
+        &self,
+        agent_id: &str,
+        text: &str,
+        mut on_event: impl FnMut(CursorRunEvent),
+    ) -> Result<SendResult, CursorSdkError> {
         let handle = self.handle().await?;
-        let outcome = transport::server_stream_outcome(
+        let outcome = transport::server_stream_outcome_on(
             handle.http(),
             &handle.url,
             AGENT_SERVICE,
@@ -119,6 +129,11 @@ impl CursorSdkClient {
                 options: None,
                 idempotency_key: None,
             },
+            |msg| {
+                if let Some(event) = run_event(msg) {
+                    on_event(event);
+                }
+            },
         )
         .await?;
 
@@ -127,8 +142,18 @@ impl CursorSdkClient {
         // Stream dropped or finished without assistant text: block on WaitLiveRun
         // so the Grok tool call does not return and trigger a poll loop.
         if folded.assistant.is_empty() && !folded.run_id.is_empty() {
+            on_event(CursorRunEvent {
+                kind: CursorRunEventKind::Status,
+                text: "waiting for Cursor to finish".into(),
+            });
             match self.wait_live_run_until_done(&folded.run_id).await {
-                Ok(text) if !text.is_empty() => folded.assistant = text,
+                Ok(text) if !text.is_empty() => {
+                    on_event(CursorRunEvent {
+                        kind: CursorRunEventKind::Assistant,
+                        text: text.clone(),
+                    });
+                    folded.assistant = text;
+                }
                 Ok(_) => {}
                 Err(e) => {
                     if folded.assistant.is_empty() && outcome.error.is_some() {
@@ -269,6 +294,19 @@ pub struct SendResult {
     pub error: Option<String>,
 }
 
+/// Incremental event from a Cursor `Send` stream.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CursorRunEvent {
+    pub kind: CursorRunEventKind,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CursorRunEventKind {
+    Status,
+    Assistant,
+}
+
 #[derive(Debug, Clone)]
 pub struct AgentSummary {
     pub agent_id: String,
@@ -282,6 +320,69 @@ struct FoldedRun {
     status: String,
     run_id: String,
     error: Option<String>,
+}
+
+fn run_event(msg: &RunStreamMessage) -> Option<CursorRunEvent> {
+    match &msg.envelope {
+        Some(run_stream_message::Envelope::SdkMessage(m)) => {
+            if (m.r#type == "assistant" || m.r#type == "assistant_message")
+                && let Some(text) = struct_text(&m.message).filter(|s| !s.is_empty())
+            {
+                return Some(CursorRunEvent {
+                    kind: CursorRunEventKind::Assistant,
+                    text,
+                });
+            }
+            if m.r#type == "status"
+                && let Some(text) = struct_text(&m.message).filter(|s| !s.is_empty())
+            {
+                return Some(CursorRunEvent {
+                    kind: CursorRunEventKind::Status,
+                    text,
+                });
+            }
+            None
+        }
+        Some(run_stream_message::Envelope::InteractionUpdate(u)) => {
+            let text = struct_text(&u.update).filter(|s| !s.is_empty())?;
+            if u.r#type.contains("assistant") || u.r#type.contains("text") {
+                Some(CursorRunEvent {
+                    kind: CursorRunEventKind::Assistant,
+                    text,
+                })
+            } else {
+                Some(CursorRunEvent {
+                    kind: CursorRunEventKind::Status,
+                    text,
+                })
+            }
+        }
+        Some(run_stream_message::Envelope::Step(s)) => {
+            let text = step_label(&s.step)?;
+            Some(CursorRunEvent {
+                kind: CursorRunEventKind::Status,
+                text,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn step_label(step: &Option<pbjson_types::Struct>) -> Option<String> {
+    for key in [
+        "title",
+        "name",
+        "description",
+        "type",
+        "kind",
+        "status",
+        "tool",
+    ] {
+        if let Some(v) = struct_field_string(step, key).filter(|s| !s.is_empty()) {
+            return Some(v);
+        }
+    }
+    struct_text(step).filter(|s| !s.is_empty())
 }
 
 fn fold_run_stream(messages: &[RunStreamMessage]) -> FoldedRun {
@@ -428,5 +529,8 @@ mod tests {
         }];
         let folded = fold_run_stream(&messages);
         assert_eq!(folded.assistant, "hi");
+        let event = run_event(&messages[0]).expect("assistant event");
+        assert_eq!(event.kind, CursorRunEventKind::Assistant);
+        assert_eq!(event.text, "hi");
     }
 }

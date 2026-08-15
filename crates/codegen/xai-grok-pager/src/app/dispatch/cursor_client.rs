@@ -116,6 +116,18 @@ pub(super) fn handle_cursor_agent_created(
     vec![]
 }
 
+pub(super) fn handle_cursor_proxy_progress(
+    app: &mut AppView,
+    agent_id: AgentId,
+    event: crate::cursor_client::CursorProxyProgress,
+) -> Vec<Effect> {
+    let Some(agent) = app.agents.get_mut(&agent_id) else {
+        return vec![];
+    };
+    cursor_client::apply_progress(agent, event);
+    vec![]
+}
+
 pub(super) fn handle_cursor_proxy_send_complete(
     app: &mut AppView,
     agent_id: AgentId,
@@ -124,7 +136,9 @@ pub(super) fn handle_cursor_proxy_send_complete(
     let Some(agent) = app.agents.get_mut(&agent_id) else {
         return vec![];
     };
+    let streamed = cursor_client::finish_cursor_run(agent);
     match result {
+        Ok(_) if streamed => {}
         Ok(text) => {
             let body = if text.trim().is_empty() {
                 "(Cursor finished with no text.)".to_string()

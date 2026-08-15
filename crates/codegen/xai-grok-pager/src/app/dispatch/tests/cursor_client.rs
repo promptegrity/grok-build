@@ -9,6 +9,9 @@ fn enter_cursor_client(app: &mut AppView) {
         display_name: "Composer 2".into(),
         agent_id: "agt_test".into(),
         inflight: false,
+        activity: None,
+        stream_entry: None,
+        streamed_text: String::new(),
     });
 }
 
@@ -161,6 +164,40 @@ fn cursor_models_loaded_error_surfaces_login_hint() {
 }
 
 #[test]
+fn cursor_progress_updates_activity_and_streams_text() {
+    let mut app = test_app_with_agent();
+    enter_cursor_client(&mut app);
+    let _ = dispatch(Action::SendPrompt("hello".into()), &mut app);
+    assert!(app.agents[&AgentId(0)].session.state.is_turn_running());
+    let _ = dispatch(
+        Action::TaskComplete(TaskResult::CursorProxyProgress {
+            agent_id: AgentId(0),
+            event: crate::cursor_client::CursorProxyProgress::Status("reading src".into()),
+        }),
+        &mut app,
+    );
+    assert_eq!(
+        app.agents[&AgentId(0)]
+            .cursor_client
+            .as_ref()
+            .and_then(|c| c.activity.as_deref()),
+        Some("reading src")
+    );
+    let _ = dispatch(
+        Action::TaskComplete(TaskResult::CursorProxyProgress {
+            agent_id: AgentId(0),
+            event: crate::cursor_client::CursorProxyProgress::AssistantDelta("Hi there".into()),
+        }),
+        &mut app,
+    );
+    assert!(
+        app.agents[&AgentId(0)]
+            .cursor_client
+            .as_ref()
+            .is_some_and(|c| c.streamed_text == "Hi there")
+    );
+}
+
 fn peer_inbound_ignored_when_not_client() {
     let mut app = test_app_with_agent();
     let effects = dispatch(

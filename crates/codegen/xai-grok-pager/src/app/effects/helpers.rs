@@ -50,11 +50,16 @@ where
         }
     }
 }
-/// Typed progress message for session restore.
-/// Keeps the progress channel from accepting arbitrary `TaskResult` variants.
-pub(crate) struct RestoreProgressMsg {
-    pub agent_id: AgentId,
-    pub message: String,
+/// Progress from a long-running effect (session restore or Cursor proxy).
+pub(crate) enum RestoreProgressMsg {
+    Restore {
+        agent_id: AgentId,
+        message: String,
+    },
+    Cursor {
+        agent_id: AgentId,
+        event: crate::cursor_client::CursorProxyProgress,
+    },
 }
 pub(super) fn log_prompt_result(
     session_id: &acp::SessionId,

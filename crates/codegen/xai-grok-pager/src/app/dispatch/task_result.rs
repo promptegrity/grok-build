@@ -591,6 +591,9 @@ pub(super) fn dispatch_task_result(result: TaskResult, app: &mut AppView) -> Vec
             display_name,
             result,
         ),
+        TaskResult::CursorProxyProgress { agent_id, event } => {
+            super::cursor_client::handle_cursor_proxy_progress(app, agent_id, event)
+        }
         TaskResult::CursorProxySendComplete { agent_id, result } => {
             super::cursor_client::handle_cursor_proxy_send_complete(app, agent_id, result)
         }

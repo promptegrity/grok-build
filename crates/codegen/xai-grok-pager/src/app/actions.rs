@@ -2571,6 +2571,11 @@ pub enum TaskResult {
         display_name: String,
         result: Result<String, String>,
     },
+    /// Incremental Cursor `Send` status or assistant text.
+    CursorProxyProgress {
+        agent_id: AgentId,
+        event: crate::cursor_client::CursorProxyProgress,
+    },
     /// Cursor `Send` finished (reply already delivered to the peer if needed).
     CursorProxySendComplete {
         agent_id: AgentId,

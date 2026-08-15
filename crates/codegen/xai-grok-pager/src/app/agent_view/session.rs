@@ -904,6 +904,14 @@ impl AgentView {
     ) -> Option<crate::acp::tracker::TurnActivity> {
         use crate::acp::tracker::{TurnActivity, WaitingReason};
         use crate::app::agent::AgentState;
+        if let Some(client) = self.cursor_client.as_ref()
+            && client.inflight
+        {
+            return Some(TurnActivity::ToolRunning {
+                title: "Cursor".into(),
+                description: client.activity.clone().or_else(|| Some("working".into())),
+            });
+        }
         if let Some(activity) = self.session.turn_activity() {
             return Some(activity);
         }

@@ -12,6 +12,13 @@ thread_local! {
     static FETCH_STARTED: Cell<bool> = const { Cell::new(false) };
 }
 
+/// Incremental Cursor run update shown in the TUI while `Send` is in flight.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CursorProxyProgress {
+    Status(String),
+    AssistantDelta(String),
+}
+
 /// One Cursor agent bound to a Grok session that forwards prompts.
 #[derive(Debug, Clone)]
 pub struct CursorClientSession {
@@ -19,6 +26,11 @@ pub struct CursorClientSession {
     pub display_name: String,
     pub agent_id: String,
     pub inflight: bool,
+    /// Latest status/step label for the turn-status spinner.
+    pub activity: Option<String>,
+    /// Streaming assistant block, if any text has arrived.
+    pub stream_entry: Option<crate::scrollback::entry::EntryId>,
+    pub streamed_text: String,
 }
 
 /// Prompt waiting because another Cursor send is in flight.
@@ -169,10 +181,71 @@ pub fn enqueue_or_send(
             ));
         return vec![];
     }
+    begin_cursor_run(agent);
+    vec![cursor_proxy_send_effect(agent, text, reply_to)]
+}
+
+/// Mark the session as a live Cursor turn (spinner + follow).
+pub fn begin_cursor_run(agent: &mut AgentView) {
+    agent.session.state = crate::app::agent::AgentState::TurnRunning;
     if let Some(client) = agent.cursor_client.as_mut() {
         client.inflight = true;
+        client.activity = Some("working".into());
+        client.stream_entry = None;
+        client.streamed_text.clear();
     }
-    vec![cursor_proxy_send_effect(agent, text, reply_to)]
+}
+
+/// Apply a stream event to the live Cursor turn.
+pub fn apply_progress(agent: &mut AgentView, event: CursorProxyProgress) {
+    if !agent.cursor_client.as_ref().is_some_and(|c| c.inflight) {
+        return;
+    }
+    match event {
+        CursorProxyProgress::Status(text) => {
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                return;
+            }
+            if let Some(client) = agent.cursor_client.as_mut() {
+                client.activity = Some(trimmed.to_string());
+            }
+        }
+        CursorProxyProgress::AssistantDelta(delta) => {
+            if delta.is_empty() {
+                return;
+            }
+            let existing = agent.cursor_client.as_ref().and_then(|c| c.stream_entry);
+            let id = existing.unwrap_or_else(|| {
+                let id = agent.scrollback.start_streaming_agent();
+                agent.scrollback.set_entry_running(id, true);
+                id
+            });
+            if let Some(client) = agent.cursor_client.as_mut() {
+                client.activity = Some("responding".into());
+                client.stream_entry = Some(id);
+                client.streamed_text.push_str(&delta);
+            }
+            agent.scrollback.push_chunk_to_agent(id, &delta);
+        }
+    }
+}
+
+/// End the live Cursor turn. Returns true if assistant text was already streamed.
+pub fn finish_cursor_run(agent: &mut AgentView) -> bool {
+    agent.session.state = crate::app::agent::AgentState::Idle;
+    let Some(client) = agent.cursor_client.as_mut() else {
+        return false;
+    };
+    client.activity = None;
+    let streamed = !client.streamed_text.trim().is_empty();
+    let stream_entry = client.stream_entry.take();
+    client.streamed_text.clear();
+    drop(client);
+    if let Some(id) = stream_entry {
+        agent.scrollback.set_entry_running(id, false);
+    }
+    streamed
 }
 
 /// Build the send effect from the current Cursor client session.
@@ -209,9 +282,7 @@ pub fn drain_queued_send(agent: &mut AgentView) -> Vec<Effect> {
         }
         return vec![];
     };
-    if let Some(client) = agent.cursor_client.as_mut() {
-        client.inflight = true;
-    }
+    begin_cursor_run(agent);
     vec![cursor_proxy_send_effect(agent, next.text, next.reply_to)]
 }
 
@@ -241,6 +312,9 @@ pub fn activate_on_agent(
         display_name: display_name.clone(),
         agent_id: cursor_agent_id,
         inflight: false,
+        activity: None,
+        stream_entry: None,
+        streamed_text: String::new(),
     });
     agent.cursor_proxy_queue.clear();
     if let Some(sid) = agent.session.session_id.as_ref() {
@@ -269,6 +343,9 @@ mod tests {
             display_name: "Composer 2".into(),
             agent_id: "agt".into(),
             inflight: false,
+            activity: None,
+            stream_entry: None,
+            streamed_text: String::new(),
         };
         assert_eq!(status_label(&session), "Cursor · Composer 2");
     }

@@ -63,7 +63,7 @@ In a second terminal (after `grok login-cursor`):
 
 Pick a Cursor model from the dropdown (or type `/model-cursor composer-2`). Grok creates a local Cursor agent in the current workspace. After that:
 
-- Each prompt you type is sent to Cursor and the session waits for the reply. The Grok model is not in the loop.
+- Each prompt you type is sent to Cursor and the session waits for the reply. The Grok model is not in the loop. While Cursor works, Grok 2 shows a spinner with the current step and streams the reply as it arrives.
 - Peer messages from another Grok session are forwarded the same way. When Cursor finishes, this session replies to the sender automatically.
 - `/model <grok-name>` or `/new` leaves client mode.
 

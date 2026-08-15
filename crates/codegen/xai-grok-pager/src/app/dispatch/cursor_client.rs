@@ -39,12 +39,15 @@ pub(super) fn dispatch_activate_cursor_client(
             .push_block(RenderBlock::system("Start a session before /model-cursor."));
         return vec![];
     }
-    vec![Effect::CreateCursorAgent {
+    let cwd = agent.session.cwd.clone();
+    let mut effects = cursor_client::clear_cursor_client_on_agent(agent);
+    effects.push(Effect::CreateCursorAgent {
         agent_id: id,
-        cwd: agent.session.cwd.clone(),
+        cwd,
         model_id,
         display_name,
-    }]
+    });
+    effects
 }
 
 pub(super) fn dispatch_cursor_proxy_inbound(
@@ -116,6 +119,18 @@ pub(super) fn handle_cursor_agent_created(
     vec![]
 }
 
+pub(super) fn handle_cursor_proxy_progress(
+    app: &mut AppView,
+    agent_id: AgentId,
+    event: crate::cursor_client::CursorProxyProgress,
+) -> Vec<Effect> {
+    let Some(agent) = app.agents.get_mut(&agent_id) else {
+        return vec![];
+    };
+    cursor_client::apply_progress(agent, event);
+    vec![]
+}
+
 pub(super) fn handle_cursor_proxy_send_complete(
     app: &mut AppView,
     agent_id: AgentId,
@@ -124,7 +139,9 @@ pub(super) fn handle_cursor_proxy_send_complete(
     let Some(agent) = app.agents.get_mut(&agent_id) else {
         return vec![];
     };
+    let streamed = cursor_client::finish_cursor_run(agent);
     match result {
+        Ok(_) if streamed => {}
         Ok(text) => {
             let body = if text.trim().is_empty() {
                 "(Cursor finished with no text.)".to_string()
@@ -145,6 +162,26 @@ pub(super) fn handle_cursor_proxy_send_complete(
 }
 
 /// Shared exit used by `/model` so a Grok model switch leaves client mode.
-pub(super) fn leave_cursor_client_if_active(app: &mut AppView, agent_id: AgentId) {
-    cursor_client::clear_cursor_client(app, agent_id);
+pub(super) fn leave_cursor_client_if_active(app: &mut AppView, agent_id: AgentId) -> Vec<Effect> {
+    cursor_client::clear_cursor_client(app, agent_id)
+}
+
+pub(super) fn handle_cursor_agent_deleted(
+    _app: &mut AppView,
+    cursor_agent_id: String,
+    result: Result<(), String>,
+) -> Vec<Effect> {
+    match result {
+        Ok(()) => {
+            xai_grok_tools::implementations::cursor::forget_client_agent(&cursor_agent_id);
+        }
+        Err(error) => {
+            tracing::warn!(
+                cursor_agent_id,
+                error,
+                "failed to delete Cursor client agent"
+            );
+        }
+    }
+    vec![]
 }

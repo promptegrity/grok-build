@@ -1,5 +1,6 @@
 //! Cursor SDK Bridge tools (`cursor_list_models`, `cursor_create_agent`, …).
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -33,13 +34,53 @@ pub fn shared_client(
     Ok(arc)
 }
 
-/// Graceful sidecar shutdown (primary session end). No-op if unused.
+fn client_agent_ids() -> &'static Mutex<HashSet<String>> {
+    static SLOT: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// Remember a `/model-cursor` agent so process/session teardown can delete it.
+pub fn remember_client_agent(agent_id: impl Into<String>) {
+    client_agent_ids()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(agent_id.into());
+}
+
+/// Drop a client-mode agent id after a successful `DeleteAgent`.
+pub fn forget_client_agent(agent_id: &str) {
+    client_agent_ids()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(agent_id);
+}
+
+fn take_client_agents() -> Vec<String> {
+    client_agent_ids()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .drain()
+        .collect()
+}
+
+/// Graceful sidecar shutdown (primary session end). Deletes leftover
+/// `/model-cursor` agents first. No-op if unused.
 pub async fn close_shared_client() {
+    let leftover = take_client_agents();
     let client = client_slot()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .take();
     if let Some(client) = client {
+        for agent_id in leftover {
+            if let Err(error) = client.delete_agent(&agent_id).await {
+                tracing::warn!(
+                    agent_id,
+                    error = %error,
+                    "failed to delete Cursor client agent on sidecar close"
+                );
+            }
+        }
         client.close().await;
     }
 }

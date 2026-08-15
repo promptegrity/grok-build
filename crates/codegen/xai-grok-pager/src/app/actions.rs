@@ -1635,6 +1635,11 @@ pub enum Effect {
         model_id: String,
         display_name: String,
     },
+    /// Delete a `/model-cursor` Cursor agent (leave client mode or quit).
+    DeleteCursorAgent {
+        cwd: std::path::PathBuf,
+        cursor_agent_id: String,
+    },
     /// Forward a prompt to the bound Cursor agent and wait for the reply.
     CursorProxySend {
         agent_id: AgentId,
@@ -2571,10 +2576,20 @@ pub enum TaskResult {
         display_name: String,
         result: Result<String, String>,
     },
+    /// Incremental Cursor `Send` status or assistant text.
+    CursorProxyProgress {
+        agent_id: AgentId,
+        event: crate::cursor_client::CursorProxyProgress,
+    },
     /// Cursor `Send` finished (reply already delivered to the peer if needed).
     CursorProxySendComplete {
         agent_id: AgentId,
         result: Result<String, String>,
+    },
+    /// Cursor `DeleteAgent` finished (best-effort; failures are logged).
+    CursorAgentDeleted {
+        cursor_agent_id: String,
+        result: Result<(), String>,
     },
     /// Changelog fetched from CDN (both formats).
     ChangelogFetched {

@@ -103,6 +103,24 @@ pub async fn server_stream_outcome<Req: Message, Resp: Message + Default>(
     bearer: &str,
     request: &Req,
 ) -> Result<StreamOutcome<Resp>, CursorSdkError> {
+    server_stream_outcome_on(http, base_url, service, method, bearer, request, |_| {}).await
+}
+
+/// Like [`server_stream_outcome`], calling `on_msg` as each response frame arrives.
+pub async fn server_stream_outcome_on<Req, Resp, F>(
+    http: &reqwest::Client,
+    base_url: &str,
+    service: &str,
+    method: &str,
+    bearer: &str,
+    request: &Req,
+    mut on_msg: F,
+) -> Result<StreamOutcome<Resp>, CursorSdkError>
+where
+    Req: Message,
+    Resp: Message + Default,
+    F: FnMut(&Resp),
+{
     let url = format!("{base_url}/{service}/{method}");
     let envelope = encode_connect_frame(0, &request.encode_to_vec());
     let response = http
@@ -135,15 +153,23 @@ pub async fn server_stream_outcome<Req: Message, Resp: Message + Default>(
             }
         };
         decoder.push(&chunk);
+        let before = messages.len();
         match drain_frames::<Resp>(service, method, &mut decoder, &mut messages) {
-            Ok(true) => {
-                return Ok(StreamOutcome {
-                    messages,
-                    error: None,
-                });
+            Ok(ended) => {
+                for msg in &messages[before..] {
+                    on_msg(msg);
+                }
+                if ended {
+                    return Ok(StreamOutcome {
+                        messages,
+                        error: None,
+                    });
+                }
             }
-            Ok(false) => {}
             Err(e) => {
+                for msg in &messages[before..] {
+                    on_msg(msg);
+                }
                 return Ok(StreamOutcome {
                     messages,
                     error: Some(e),

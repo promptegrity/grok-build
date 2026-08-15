@@ -21,7 +21,7 @@ pub mod pb {
 
 pub use auth::{CURSOR_API_KEY_ENV, read_stored_cursor_api_key, resolve_cursor_api_key};
 pub use bridge::{BridgeHandle, BridgeManager};
-pub use client::CursorSdkClient;
+pub use client::{CursorRunEvent, CursorRunEventKind, CursorSdkClient};
 pub use discover::{BRIDGE_BIN_ENV, discover_bridge_bin};
 pub use error::CursorSdkError;
 pub use handshake::{READY_LINE_PREFIX, ReadyInfo, parse_ready_line};

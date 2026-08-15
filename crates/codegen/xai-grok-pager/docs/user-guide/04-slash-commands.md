@@ -12,7 +12,7 @@ Every command below lists its aliases where it has them. A few commands only app
 
 ### `/new`
 
-Start a fresh session and clear the current conversation. Alias: `/clear`.
+Start a fresh session and clear the current conversation. Alias: `/clear`. If the session was in `/model-cursor` client mode, the bound Cursor agent is deleted.
 
 ### `/resume`
 
@@ -134,7 +134,7 @@ Turn this session into a **Cursor client**. Opens the Cursor model list (from yo
 /model-cursor Composer 2
 ```
 
-`/model <grok-name>` leaves client mode and returns prompts to Grok. Requires `grok login-cursor` (or `CURSOR_API_KEY`). See [Cursor SDK Bridge](26-cursor-sdk-bridge.md).
+`/model <grok-name>`, `/new` (`/clear`), `/home`, or `/quit` (`/exit`) leaves client mode, deletes the Cursor agent, and returns prompts to Grok. Requires `grok login-cursor` (or `CURSOR_API_KEY`). See [Cursor SDK Bridge](26-cursor-sdk-bridge.md).
 
 ### `/effort <level>`
 

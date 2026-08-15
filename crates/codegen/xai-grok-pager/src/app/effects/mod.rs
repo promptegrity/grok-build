@@ -1000,7 +1000,7 @@ pub(crate) fn execute(
                                 };
                                 if let Some(text) = msg {
                                     let _ = ptx
-                                        .send(RestoreProgressMsg {
+                                        .send(RestoreProgressMsg::Restore {
                                             agent_id,
                                             message: text,
                                         });
@@ -1783,6 +1783,18 @@ pub(crate) fn execute(
                 }
             });
         }
+        Effect::DeleteCursorAgent {
+            cwd,
+            cursor_agent_id,
+        } => {
+            tasks.spawn(async move {
+                let result = delete_cursor_agent(cwd, &cursor_agent_id).await;
+                TaskResult::CursorAgentDeleted {
+                    cursor_agent_id,
+                    result,
+                }
+            });
+        }
         Effect::CursorProxySend {
             agent_id,
             cwd,
@@ -1792,6 +1804,7 @@ pub(crate) fn execute(
             from_name,
             from_session_id,
         } => {
+            let ptx = progress_tx.clone();
             tasks.spawn(async move {
                 let result = cursor_proxy_send(
                     cwd,
@@ -1800,6 +1813,9 @@ pub(crate) fn execute(
                     reply_to.as_deref(),
                     &from_name,
                     &from_session_id,
+                    |event| {
+                        let _ = ptx.send(RestoreProgressMsg::Cursor { agent_id, event });
+                    },
                 )
                 .await;
                 TaskResult::CursorProxySendComplete { agent_id, result }
@@ -4790,7 +4806,17 @@ async fn create_cursor_agent(cwd: PathBuf, model_id: &str) -> Result<String, Str
         .create_local_agent(model_id, Some("grok-cursor-client".into()))
         .await
         .map_err(|e| e.to_string())?;
+    xai_grok_tools::implementations::cursor::remember_client_agent(&created.agent_id);
     Ok(created.agent_id)
+}
+
+async fn delete_cursor_agent(cwd: PathBuf, cursor_agent_id: &str) -> Result<(), String> {
+    let client = xai_grok_tools::implementations::cursor::shared_client(cwd)
+        .map_err(|e| e.to_string())?;
+    client
+        .delete_agent(cursor_agent_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 async fn cursor_proxy_send(
@@ -4800,11 +4826,22 @@ async fn cursor_proxy_send(
     reply_to: Option<&str>,
     from_name: &str,
     from_session_id: &str,
+    mut on_progress: impl FnMut(crate::cursor_client::CursorProxyProgress),
 ) -> Result<String, String> {
     let client = xai_grok_tools::implementations::cursor::shared_client(cwd)
         .map_err(|e| e.to_string())?;
     let sent = client
-        .send(cursor_agent_id, text)
+        .send_with_progress(cursor_agent_id, text, |event| {
+            let mapped = match event.kind {
+                xai_grok_cursor_sdk::CursorRunEventKind::Status => {
+                    crate::cursor_client::CursorProxyProgress::Status(event.text)
+                }
+                xai_grok_cursor_sdk::CursorRunEventKind::Assistant => {
+                    crate::cursor_client::CursorProxyProgress::AssistantDelta(event.text)
+                }
+            };
+            on_progress(mapped);
+        })
         .await
         .map_err(|e| e.to_string())?;
     let reply = if sent.text.trim().is_empty() {

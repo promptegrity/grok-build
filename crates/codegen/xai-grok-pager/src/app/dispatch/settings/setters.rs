@@ -1745,11 +1745,11 @@ pub(in crate::app::dispatch) fn set_default_model(
     }
 
     // `/model` is the documented exit from Cursor client mode.
-    crate::cursor_client::clear_cursor_client(app, aid);
+    let leave_cursor = crate::cursor_client::clear_cursor_client(app, aid);
 
     // Idempotent: same Grok model already active → no SwitchModel.
     if prev_id.as_ref() == Some(&new_id) {
-        return vec![];
+        return leave_cursor;
     }
 
     let did_mutate = set_default_model_inner(app, &new_id);
@@ -1772,7 +1772,7 @@ pub(in crate::app::dispatch) fn set_default_model(
     //
     // Chat (`--chat` / GROK_CHAT_MODE) catalogs use opaque `/rest/modes`
     // slugs that must not become the global Build `default_model`.
-    let mut effects: Vec<Effect> = Vec::new();
+    let mut effects = leave_cursor;
     if !xai_grok_shell::agent::chat_modes::process_chat_mode_enabled() {
         let new_id_str = new_id.0.to_string();
         let prev_id_str = prev_id

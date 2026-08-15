@@ -36,9 +36,16 @@ pub fn resolve_cursor_api_key(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     #[test]
     fn env_wins_over_disk() {
+        let _serial = env_lock().lock().unwrap();
         let _guard = EnvGuard::set(CURSOR_API_KEY_ENV, "env-key");
         let got = resolve_cursor_api_key(|| Some("disk-key".into())).unwrap();
         assert_eq!(got, "env-key");
@@ -46,6 +53,7 @@ mod tests {
 
     #[test]
     fn disk_used_when_env_absent() {
+        let _serial = env_lock().lock().unwrap();
         let _guard = EnvGuard::remove(CURSOR_API_KEY_ENV);
         let got = resolve_cursor_api_key(|| Some("disk-key".into())).unwrap();
         assert_eq!(got, "disk-key");
@@ -53,6 +61,7 @@ mod tests {
 
     #[test]
     fn missing_both_is_error() {
+        let _serial = env_lock().lock().unwrap();
         let _guard = EnvGuard::remove(CURSOR_API_KEY_ENV);
         let err = resolve_cursor_api_key(|| None).unwrap_err();
         assert!(err.to_string().contains("login-cursor"));

@@ -1782,30 +1782,24 @@ mod tests {
             ToolConfig::from(&cursor::CursorListAgentsTool).id,
         ];
         for name in ["grok-build", "grok-build-concise", "grok-build-plan", "plan"] {
-            let ids: std::collections::HashSet<&str> = toolset_for_preset(name)
-                .unwrap()
-                .tools
-                .iter()
-                .map(|t| t.id.as_str())
-                .collect();
+            let toolset = toolset_for_preset(name).unwrap();
+            let ids: std::collections::HashSet<&str> =
+                toolset.tools.iter().map(|t| t.id.as_str()).collect();
             for id in &cursor_ids {
                 assert!(ids.contains(id.as_str()), "{name} missing {id}");
             }
         }
-        let explore_ids: std::collections::HashSet<&str> = toolset_for_preset("explore")
-            .unwrap()
-            .tools
-            .iter()
-            .map(|t| t.id.as_str())
-            .collect();
-        let computer_ids: std::collections::HashSet<&str> = toolset_for_preset("grok-computer")
-            .unwrap()
-            .tools
-            .iter()
-            .map(|t| t.id.as_str())
-            .collect();
+        let explore = toolset_for_preset("explore").unwrap();
+        let explore_ids: std::collections::HashSet<&str> =
+            explore.tools.iter().map(|t| t.id.as_str()).collect();
+        let computer = toolset_for_preset("grok-computer").unwrap();
+        let computer_ids: std::collections::HashSet<&str> =
+            computer.tools.iter().map(|t| t.id.as_str()).collect();
         for id in &cursor_ids {
-            assert!(!explore_ids.contains(id.as_str()), "explore must not include {id}");
+            assert!(
+                !explore_ids.contains(id.as_str()),
+                "explore must not include {id}"
+            );
             assert!(
                 !computer_ids.contains(id.as_str()),
                 "grok-computer must not include {id}"

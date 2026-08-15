@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::model::{API_KEY_SCOPE, AuthMode, AuthStore, GrokAuth};
+use super::model::{API_KEY_SCOPE, AuthMode, AuthStore, CURSOR_API_KEY_SCOPE, GrokAuth};
 
 /// RAII guard for an exclusive advisory lock on `auth.json.lock`.
 /// The lock is released when the inner `File` is dropped (closing the FD).
@@ -441,6 +441,44 @@ pub fn store_api_key(grok_home: &Path, api_key: &str) -> std::io::Result<()> {
     write_auth_json(&path, &map)
 }
 
+/// Read the Cursor API key from the `cursor::api_key` scope in auth.json.
+pub fn read_cursor_api_key(grok_home: &Path) -> Option<String> {
+    let path = grok_home.join("auth.json");
+    let map = read_auth_json(&path).ok()?;
+    map.get(CURSOR_API_KEY_SCOPE).map(|a| a.key.clone())
+}
+
+/// Store a Cursor API key in auth.json under `cursor::api_key`.
+///
+/// Does not touch `xai::api_key` or `XAI_API_KEY`.
+pub fn store_cursor_api_key(grok_home: &Path, api_key: &str) -> std::io::Result<()> {
+    let path = grok_home.join("auth.json");
+    let mut map = read_auth_json_or_empty_recovering_corrupt(&path)?;
+    map.insert(
+        CURSOR_API_KEY_SCOPE.to_owned(),
+        GrokAuth {
+            key: api_key.to_owned(),
+            auth_mode: AuthMode::ApiKey,
+            ..Default::default()
+        },
+    );
+    write_auth_json(&path, &map)
+}
+
+/// Remove the `cursor::api_key` scope from auth.json.
+pub fn clear_cursor_api_key(grok_home: &Path) -> std::io::Result<()> {
+    let path = grok_home.join("auth.json");
+    if let Ok(mut map) = read_auth_json(&path) {
+        map.remove(CURSOR_API_KEY_SCOPE);
+        if map.is_empty() {
+            let _ = std::fs::remove_file(&path);
+        } else {
+            write_auth_json(&path, &map)?;
+        }
+    }
+    Ok(())
+}
+
 /// Remove the `xai::api_key` scope from auth.json.
 pub fn clear_api_key(grok_home: &Path) -> std::io::Result<()> {
     let path = grok_home.join("auth.json");
@@ -653,5 +691,38 @@ mod write_fallback_tests {
         let _ = write_auth_json_in_place_with(&path, &sample_store(), fake_truncate_then_fail);
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600, "restored file must stay 0o600");
+    }
+}
+
+#[cfg(test)]
+mod cursor_scope_tests {
+    use super::*;
+
+    #[test]
+    fn cursor_key_does_not_overwrite_xai_key() {
+        let dir = tempfile::tempdir().unwrap();
+        store_api_key(dir.path(), "xai-secret").unwrap();
+        store_cursor_api_key(dir.path(), "cursor-secret").unwrap();
+        assert_eq!(read_api_key(dir.path()).as_deref(), Some("xai-secret"));
+        assert_eq!(
+            read_cursor_api_key(dir.path()).as_deref(),
+            Some("cursor-secret")
+        );
+        clear_cursor_api_key(dir.path()).unwrap();
+        assert_eq!(read_api_key(dir.path()).as_deref(), Some("xai-secret"));
+        assert!(read_cursor_api_key(dir.path()).is_none());
+    }
+
+    #[test]
+    fn clear_xai_key_does_not_wipe_cursor_key() {
+        let dir = tempfile::tempdir().unwrap();
+        store_api_key(dir.path(), "xai-secret").unwrap();
+        store_cursor_api_key(dir.path(), "cursor-secret").unwrap();
+        clear_api_key(dir.path()).unwrap();
+        assert!(read_api_key(dir.path()).is_none());
+        assert_eq!(
+            read_cursor_api_key(dir.path()).as_deref(),
+            Some("cursor-secret")
+        );
     }
 }

@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use strum::{AsRefStr, Display, EnumIter, EnumString, IntoStaticStr};
 use xai_grok_tools::implementations::codex;
+use xai_grok_tools::implementations::cursor;
 use xai_grok_tools::implementations::grok_build;
 use xai_grok_tools::implementations::grok_build_concise;
 use xai_grok_tools::implementations::memory;
@@ -283,6 +284,10 @@ fn default_grok_build_toolset() -> ToolServerConfig {
             (&grok_build::WorkflowTool).into(),
             (&grok_build::ListPeersTool).into(),
             (&grok_build::SendMessageTool).into(),
+            (&cursor::CursorListModelsTool).into(),
+            (&cursor::CursorCreateAgentTool).into(),
+            (&cursor::CursorSendTool).into(),
+            (&cursor::CursorListAgentsTool).into(),
         ],
         behavior_preset: None,
     }
@@ -306,6 +311,10 @@ fn grok_build_concise_toolset() -> ToolServerConfig {
             (&grok_build::WorkflowTool).into(),
             (&grok_build::ListPeersTool).into(),
             (&grok_build::SendMessageTool).into(),
+            (&cursor::CursorListModelsTool).into(),
+            (&cursor::CursorCreateAgentTool).into(),
+            (&cursor::CursorSendTool).into(),
+            (&cursor::CursorListAgentsTool).into(),
         ],
         behavior_preset: None,
     }
@@ -338,6 +347,10 @@ pub fn grok_build_hashline_toolset(
         (&grok_build::WorkflowTool).into(),
         (&grok_build::ListPeersTool).into(),
         (&grok_build::SendMessageTool).into(),
+        (&cursor::CursorListModelsTool).into(),
+        (&cursor::CursorCreateAgentTool).into(),
+        (&cursor::CursorSendTool).into(),
+        (&cursor::CursorListAgentsTool).into(),
     ]);
     ToolServerConfig {
         tools,
@@ -391,6 +404,10 @@ fn plan_toolset() -> ToolServerConfig {
             (&grok_build::GrepTool).into(),
             // (&grok_build::SkillTool).into(),
             (&grok_build::TodoWriteTool).into(),
+            (&cursor::CursorListModelsTool).into(),
+            (&cursor::CursorCreateAgentTool).into(),
+            (&cursor::CursorSendTool).into(),
+            (&cursor::CursorListAgentsTool).into(),
             // search_replace + run_terminal_command intentionally omitted (read-only)
         ],
         behavior_preset: None,
@@ -425,6 +442,10 @@ fn grok_build_plan_toolset() -> ToolServerConfig {
             (&grok_build::WorkflowTool).into(),
             (&grok_build::ListPeersTool).into(),
             (&grok_build::SendMessageTool).into(),
+            (&cursor::CursorListModelsTool).into(),
+            (&cursor::CursorCreateAgentTool).into(),
+            (&cursor::CursorSendTool).into(),
+            (&cursor::CursorListAgentsTool).into(),
             // Plan mode tools
             (&grok_build::EnterPlanModeTool).into(),
             (&grok_build::ExitPlanModeTool).into(),
@@ -1751,6 +1772,39 @@ mod tests {
         let explore = toolset_for_preset("explore").unwrap();
         assert!(explore.tools.len() < plan.tools.len());
         assert!(plan.tools.len() < gb.tools.len());
+    }
+    #[test]
+    fn grok_build_family_includes_cursor_tools_explore_does_not() {
+        let cursor_ids = [
+            ToolConfig::from(&cursor::CursorListModelsTool).id,
+            ToolConfig::from(&cursor::CursorCreateAgentTool).id,
+            ToolConfig::from(&cursor::CursorSendTool).id,
+            ToolConfig::from(&cursor::CursorListAgentsTool).id,
+        ];
+        for name in ["grok-build", "grok-build-concise", "grok-build-plan", "plan"] {
+            let toolset = toolset_for_preset(name).unwrap();
+            let ids: std::collections::HashSet<&str> =
+                toolset.tools.iter().map(|t| t.id.as_str()).collect();
+            for id in &cursor_ids {
+                assert!(ids.contains(id.as_str()), "{name} missing {id}");
+            }
+        }
+        let explore = toolset_for_preset("explore").unwrap();
+        let explore_ids: std::collections::HashSet<&str> =
+            explore.tools.iter().map(|t| t.id.as_str()).collect();
+        let computer = toolset_for_preset("grok-computer").unwrap();
+        let computer_ids: std::collections::HashSet<&str> =
+            computer.tools.iter().map(|t| t.id.as_str()).collect();
+        for id in &cursor_ids {
+            assert!(
+                !explore_ids.contains(id.as_str()),
+                "explore must not include {id}"
+            );
+            assert!(
+                !computer_ids.contains(id.as_str()),
+                "grok-computer must not include {id}"
+            );
+        }
     }
     fn grok_computer_exclusive_ids() -> Vec<String> {
         #[allow(unused_mut)]

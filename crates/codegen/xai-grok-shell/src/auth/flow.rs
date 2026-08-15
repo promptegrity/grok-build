@@ -993,6 +993,42 @@ pub async fn run_cli_login(
     result
 }
 
+/// Store a Cursor API key for the SDK Bridge. Does not touch xAI credentials.
+pub fn run_cli_login_cursor(api_key: Option<String>) -> anyhow::Result<()> {
+    let key = match api_key {
+        Some(k) if !k.trim().is_empty() => k.trim().to_string(),
+        _ => {
+            eprint!("Cursor API key: ");
+            let _ = std::io::Write::flush(&mut std::io::stderr());
+            let mut line = String::new();
+            std::io::stdin().read_line(&mut line)?;
+            let trimmed = line.trim().to_string();
+            if trimmed.is_empty() {
+                anyhow::bail!("empty API key");
+            }
+            trimmed
+        }
+    };
+    let home = grok_home::grok_home();
+    super::storage::store_cursor_api_key(&home, &key)?;
+    println!("Cursor API key saved to {}/auth.json (cursor::api_key).", home.display());
+    println!("This key is billed on your Cursor account, not xAI.");
+    Ok(())
+}
+
+/// Remove only the Cursor API key scope.
+pub fn run_cli_logout_cursor() -> anyhow::Result<()> {
+    let home = grok_home::grok_home();
+    let had = super::storage::read_cursor_api_key(&home).is_some();
+    super::storage::clear_cursor_api_key(&home)?;
+    if had {
+        println!("Cleared Cursor API key (cursor::api_key).");
+    } else {
+        println!("No Cursor API key was stored.");
+    }
+    Ok(())
+}
+
 async fn run_cli_login_steps(
     config: &crate::agent::config::Config,
     auth_manager: &Arc<AuthManager>,

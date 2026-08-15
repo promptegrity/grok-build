@@ -189,6 +189,11 @@ if (!platformDir) {
 installBinary('grok', platformDir, `grok${EXE}`);
 cleanupOldVersions('grok');
 cleanupOldVersions('grok-pager');
+if (installBinary('cursor-sdk-bridge', platformDir, `cursor-sdk-bridge${EXE}`)) {
+    cleanupOldVersions('cursor-sdk-bridge');
+} else {
+    console.error('@xai-official/grok: cursor-sdk-bridge sidecar not in the platform package; Cursor tools need CURSOR_SDK_BRIDGE_BIN.');
+}
 
 // Write installer config
 const configDir = GROK_HOME;

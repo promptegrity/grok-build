@@ -68,6 +68,21 @@ pub fn grok_application_in(home: &std::path::Path) -> PathBuf {
     home.join("bin").join(name)
 }
 
+/// Canonical Cursor SDK Bridge sidecar: `$GROK_HOME/bin/cursor-sdk-bridge`.
+pub fn cursor_sdk_bridge() -> PathBuf {
+    cursor_sdk_bridge_in(&grok_home())
+}
+
+/// [`cursor_sdk_bridge`] under an explicit home instead of `$GROK_HOME`.
+pub fn cursor_sdk_bridge_in(home: &std::path::Path) -> PathBuf {
+    let name = if cfg!(windows) {
+        "cursor-sdk-bridge.exe"
+    } else {
+        "cursor-sdk-bridge"
+    };
+    home.join("bin").join(name)
+}
+
 /// System-wide config directory: `/etc/grok/` on Unix, `None` on Windows.
 pub fn system_config_dir() -> Option<PathBuf> {
     if cfg!(unix) {

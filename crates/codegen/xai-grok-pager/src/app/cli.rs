@@ -21,6 +21,16 @@ pub enum Command {
     Leader(LeaderMgmtArgs),
     /// Sign out and clear cached credentials
     Logout,
+    /// Store a Cursor API key for the SDK Bridge sidecar
+    #[command(name = "login-cursor")]
+    LoginCursor {
+        /// Cursor user or service API key (otherwise read from stdin)
+        #[arg(long = "api-key")]
+        api_key: Option<String>,
+    },
+    /// Remove the stored Cursor API key
+    #[command(name = "logout-cursor")]
+    LogoutCursor,
     /// Sign in to Grok
     Login {
         /// Ignored (kept for backwards compatibility). OAuth2 is now the only auth method.
@@ -1415,6 +1425,22 @@ mod tests {
         let args = PagerArgs::try_parse_from(["grok", "logout"]).expect("subcommand parses");
         assert!(matches!(args.command, Some(Command::Logout)));
         assert!(args.prompt.is_none());
+    }
+    #[test]
+    fn login_cursor_parses_api_key_flag() {
+        let args = PagerArgs::try_parse_from(["grok", "login-cursor", "--api-key", "ck-test"])
+            .expect("login-cursor parses");
+        match args.command {
+            Some(Command::LoginCursor { api_key }) => {
+                assert_eq!(api_key.as_deref(), Some("ck-test"));
+            }
+            other => panic!("expected LoginCursor, got {other:?}"),
+        }
+    }
+    #[test]
+    fn logout_cursor_parses() {
+        let args = PagerArgs::try_parse_from(["grok", "logout-cursor"]).expect("logout-cursor");
+        assert!(matches!(args.command, Some(Command::LogoutCursor)));
     }
     #[test]
     fn positional_prompt_conflicts_with_headless_single() {

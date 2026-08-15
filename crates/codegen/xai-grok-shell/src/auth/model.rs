@@ -14,6 +14,10 @@ pub(super) const LEGACY_SCOPE: &str = "https://accounts.x.ai/sign-in";
 /// auth.json scope key for plain API key auth (desktop login, `grok login --api-key`).
 pub(super) const API_KEY_SCOPE: &str = "xai::api_key";
 
+/// auth.json scope key for the Cursor SDK Bridge API key. Never reuse
+/// [`API_KEY_SCOPE`] — that key is wired into xAI inference.
+pub(super) const CURSOR_API_KEY_SCOPE: &str = "cursor::api_key";
+
 const BLOCKED_REASON_NO_LOGS: &str = "BLOCKED_REASON_NO_LOGS";
 const BLOCKED_REASON_NO_LOGS_MODERATED: &str = "BLOCKED_REASON_NO_LOGS_MODERATED";
 

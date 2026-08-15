@@ -2140,6 +2140,16 @@ async fn async_main(args: PagerArgs) -> Result<()> {
                 xai_grok_shell::auth::run_cli_logout(&config)?;
                 xai_grok_shell::instrumentation::finalize_and_exit(0);
             }
+            Command::LoginCursor { api_key } => {
+                init_tracing_simple("cli");
+                xai_grok_shell::auth::run_cli_login_cursor(api_key)?;
+                xai_grok_shell::instrumentation::finalize_and_exit(0);
+            }
+            Command::LogoutCursor => {
+                init_tracing_simple("cli");
+                xai_grok_shell::auth::run_cli_logout_cursor()?;
+                xai_grok_shell::instrumentation::finalize_and_exit(0);
+            }
             Command::Wrap(ref wrap_args) => {
                 return xai_grok_pager::wrap_cmd::run(wrap_args);
             }

@@ -1,7 +1,7 @@
 use crate::{
     computer::types::{AsyncFileSystem, TerminalBackend},
     implementations::{
-        codex, grok_build, grok_build_concise, grok_build_hashline, opencode,
+        codex, cursor, grok_build, grok_build_concise, grok_build_hashline, opencode,
         skills::types::SkillInfo,
     },
     notification::ToolNotificationHandle,
@@ -693,6 +693,10 @@ impl ToolRegistryBuilder {
         b.register::<grok_build::WorkflowTool>();
         b.register::<grok_build::ListPeersTool>();
         b.register::<grok_build::SendMessageTool>();
+        b.register::<cursor::CursorListModelsTool>();
+        b.register::<cursor::CursorCreateAgentTool>();
+        b.register::<cursor::CursorSendTool>();
+        b.register::<cursor::CursorListAgentsTool>();
         b.register::<grok_build::TaskOutputTool>();
         b.register::<grok_build::GetTerminalCommandOutputTool>();
         b.register::<grok_build::WaitTasksTool>();

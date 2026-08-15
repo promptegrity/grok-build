@@ -68,6 +68,13 @@ while [ $# -gt 0 ]; do
   shift
 done
 if [ -n "${{FAKE_URL_LOG:-}}" ] && [ -n "$url" ]; then echo "$url" >> "$FAKE_URL_LOG"; fi
+if echo "$url" | grep -q cursor-sdk-bridge && [ "${{FAKE_SIDECAR:-}}" != "full" ]; then
+  if [ "$head" = 1 ]; then
+    if [ "$want_code" = 1 ]; then printf '404'; else printf 'HTTP/1.1 404 Not Found\r\n\r\n'; fi
+    exit 0
+  fi
+  exit 22
+fi
 if [ "$head" = 1 ]; then
   if [ "$want_code" = 1 ]; then printf '200'; else printf 'HTTP/1.1 200 OK\r\nContent-Length: %s\r\n\r\n' "$fullsize"; fi
   exit 0
@@ -435,6 +442,55 @@ fn install_scripts_intel_mac_keeps_x86_64() {
             "{script}: Intel Mac must keep the x86_64 artifact, urls:\n{urls}"
         );
     }
+}
+
+/// Sidecar 404 must not brick grok: install.sh still links a runnable grok
+/// and does request the same-CDN sidecar URL.
+#[test]
+fn install_sh_sidecar_404_keeps_grok_and_requests_sidecar_url() {
+    let Some(install_sh) = install_sh_path() else {
+        eprintln!("skipping: install.sh not found relative to crate; run under cargo");
+        return;
+    };
+    let platform = host_platform();
+    let fakedir = tempfile::tempdir().unwrap();
+    write_fake_curl(fakedir.path());
+    let url_log = fakedir.path().join("urls.log");
+    let home = tempfile::tempdir().unwrap();
+    seed_previous_good(home.path(), &platform);
+
+    let path_env = format!("{}:/usr/bin:/bin", fakedir.path().display());
+    let status = Command::new("/bin/bash")
+        .arg(&install_sh)
+        .arg("0.1.181")
+        .env_clear()
+        .env("HOME", home.path())
+        .env("PATH", path_env)
+        .env("SHELL", "/bin/bash")
+        .env("GROK_BIN_DIR", home.path().join(".grok").join("bin"))
+        .env("GROK_CHANNEL", "stable")
+        .env("FAKE_MODE", "full")
+        .env("FAKE_URL_LOG", &url_log)
+        .status()
+        .expect("spawn bash install.sh");
+    assert!(status.success(), "install.sh must succeed when sidecar 404s");
+    assert_active_grok_runs(home.path());
+
+    let urls = std::fs::read_to_string(&url_log).unwrap_or_default();
+    assert!(
+        urls.contains(&format!("cursor-sdk-bridge-0.1.181-{platform}")),
+        "install.sh must request the sidecar artifact, urls:\n{urls}"
+    );
+    let sidecar = home
+        .path()
+        .join(".grok")
+        .join("bin")
+        .join("cursor-sdk-bridge");
+    assert!(
+        !sidecar.exists(),
+        "sidecar must stay absent after a 404 (got {})",
+        sidecar.display()
+    );
 }
 
 /// Shell-rc rewrite matrix: stow absolute/relative/`..`, plain, first-create, enterprise.

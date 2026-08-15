@@ -41,7 +41,8 @@ pub(crate) use flow::{
 pub use flow::{
     AuthUrlInfo, AuthUrlMode, LoginTransportOverride, LogoutResult, ensure_authenticated,
     ensure_authenticated_or_noninteractive, ensure_authenticated_with_override, perform_logout,
-    run_cli_login, run_cli_logout, try_ensure_fresh_auth,
+    run_cli_login, run_cli_login_cursor, run_cli_logout, run_cli_logout_cursor,
+    try_ensure_fresh_auth,
 };
 pub use jwt::{is_jwt_expired_or_near, parse_jwt_expiration};
 mod meta;
@@ -52,4 +53,7 @@ pub use meta::{AuthMeta, GateInfo};
 pub use model::{AuthMode, GrokAuth, lookup_auth};
 pub(crate) use model::{TOKEN_TTL, UserInfo, default_coding_data_retention_opt_out, is_expired};
 pub(crate) use refresh::DiagnosticUploader;
-pub use storage::{clear_api_key, read_api_key, read_auth_json, store_api_key};
+pub use storage::{
+    clear_api_key, clear_cursor_api_key, read_api_key, read_auth_json, read_cursor_api_key,
+    store_api_key, store_cursor_api_key,
+};

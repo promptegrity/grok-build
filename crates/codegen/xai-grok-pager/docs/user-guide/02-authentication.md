@@ -39,6 +39,17 @@ Running `grok login` starts the sign-in flow again, replacing your cached sessio
 
 To sign out, run `grok logout`. It takes no flags and clears your cached credentials.
 
+### Cursor API key (SDK Bridge)
+
+To let Grok drive Cursor agents, store a **separate** Cursor key (never reuse `XAI_API_KEY`):
+
+```bash
+grok login-cursor --api-key "key_..."
+# or: export CURSOR_API_KEY="key_..."
+```
+
+The key is saved under `cursor::api_key` in `~/.grok/auth.json`. `grok logout` does not remove it; use `grok logout-cursor`. See [Cursor SDK Bridge](26-cursor-sdk-bridge.md).
+
 ---
 
 ## API Key

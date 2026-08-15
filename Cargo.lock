@@ -7336,6 +7336,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "17359afc20d7ab31fdb42bb844c8b3bb1dabd7dcf7e68428492da7f16966fcef"
 
 [[package]]
+name = "pbjson"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "898bac3fa00d0ba57a4e8289837e965baa2dee8c3749f3b11d45a64b4223d9c3"
+dependencies = [
+ "base64",
+ "serde",
+]
+
+[[package]]
+name = "pbjson-build"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af22d08a625a2213a78dbb0ffa253318c5c79ce3133d32d296655a7bdfb02095"
+dependencies = [
+ "heck",
+ "itertools 0.14.0",
+ "prost",
+ "prost-types",
+]
+
+[[package]]
 name = "pbjson-build"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7345,6 +7367,21 @@ dependencies = [
  "itertools 0.14.0",
  "prost",
  "prost-types",
+]
+
+[[package]]
+name = "pbjson-types"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e748e28374f10a330ee3bb9f29b828c0ac79831a32bab65015ad9b661ead526"
+dependencies = [
+ "bytes",
+ "chrono",
+ "pbjson",
+ "pbjson-build 0.8.0",
+ "prost",
+ "prost-build",
+ "serde",
 ]
 
 [[package]]
@@ -13456,6 +13493,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "xai-grok-cursor-sdk"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "pbjson-types",
+ "prost",
+ "reqwest 0.12.24",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tonic",
+ "tonic-prost",
+ "tracing",
+ "which",
+ "xai-grok-config",
+ "xai-proto-build",
+ "xai-tty-utils",
+]
+
+[[package]]
 name = "xai-grok-diag-server"
 version = "0.1.0"
 dependencies = [
@@ -14463,6 +14523,7 @@ dependencies = [
  "xai-file-utils",
  "xai-grok-auth",
  "xai-grok-config",
+ "xai-grok-cursor-sdk",
  "xai-grok-env",
  "xai-grok-extra-ca",
  "xai-grok-peers",
@@ -14750,7 +14811,7 @@ name = "xai-proto-build"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "pbjson-build",
+ "pbjson-build 0.9.0",
  "prost-build",
  "prost-reflect",
  "tempfile",

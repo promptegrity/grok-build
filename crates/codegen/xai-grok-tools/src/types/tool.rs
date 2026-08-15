@@ -41,6 +41,8 @@ pub enum ToolNamespace {
     Codex,
     #[serde(rename = "opencode", alias = "OpenCode", alias = "open_code")]
     OpenCode,
+    #[serde(alias = "Cursor")]
+    Cursor,
     #[serde(rename = "mcp", alias = "MCP")]
     MCP,
 }

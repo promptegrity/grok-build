@@ -231,6 +231,20 @@ foreach ($binName in @('grok.exe', 'agent.exe')) {
 
 Write-Host "  Installed to $BinDir\grok.exe and $BinDir\agent.exe." -ForegroundColor DarkGray
 
+# Optional Cursor SDK Bridge sidecar (same CDN / Grok version). Missing
+# artifact is a warning — grok itself is already installed.
+$sidecarName = "cursor-sdk-bridge-$resolvedVersion-$platform.exe"
+$sidecarPath = Join-Path $DownloadDir $sidecarName
+$sidecarUrl = "$BaseUrl/cursor-sdk-bridge-$resolvedVersion-$platform.exe"
+try {
+    Write-Host "  Downloading cursor-sdk-bridge sidecar..." -ForegroundColor DarkGray
+    Download-File $sidecarUrl $sidecarPath
+    Copy-Item -Path $sidecarPath -Destination (Join-Path $BinDir 'cursor-sdk-bridge.exe') -Force
+    Write-Host "  Sidecar installed to $BinDir\cursor-sdk-bridge.exe." -ForegroundColor DarkGray
+} catch {
+    Write-Host "  Warning: cursor-sdk-bridge sidecar not published for $platform; Cursor tools need CURSOR_SDK_BRIDGE_BIN or a later install." -ForegroundColor DarkYellow
+}
+
 # --- Generate completions (best-effort) ---
 
 $completionsDir = Join-Path (Join-Path $GrokDir 'completions') 'powershell'

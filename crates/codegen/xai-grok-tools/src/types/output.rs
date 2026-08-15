@@ -650,6 +650,10 @@ pub enum ToolOutput {
     Workflow(crate::implementations::grok_build::workflow::WorkflowToolOutput),
     ListPeers(crate::implementations::grok_build::list_peers::ListPeersOutput),
     SendMessage(crate::implementations::grok_build::send_message::SendMessageOutput),
+    CursorListModels(crate::implementations::cursor::CursorListModelsOutput),
+    CursorCreateAgent(crate::implementations::cursor::CursorCreateAgentOutput),
+    CursorSend(crate::implementations::cursor::CursorSendOutput),
+    CursorListAgents(crate::implementations::cursor::CursorListAgentsOutput),
     /// Dynamic output for runtime-registered tools (MCP, test tools, etc.)
     Dynamic(DynamicOutput),
     /// Generic text output for tools that produce simple formatted text
@@ -1016,6 +1020,46 @@ impl ToolOutput {
                 }
             }
             ToolOutput::SendMessage(o) => format!("{}: {}", o.status, o.detail),
+            ToolOutput::CursorListModels(o) => {
+                if o.models.is_empty() {
+                    "No Cursor models returned.".into()
+                } else {
+                    o.models
+                        .iter()
+                        .map(|m| format!("{} ({})", m.id, m.display_name))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                }
+            }
+            ToolOutput::CursorCreateAgent(o) => {
+                format!("Created Cursor agent {} (model {})", o.agent_id, o.model)
+            }
+            ToolOutput::CursorSend(o) => {
+                let mut out = o.text.clone();
+                if let Some(err) = &o.error {
+                    if !out.is_empty() {
+                        out.push('\n');
+                    }
+                    out.push_str("error: ");
+                    out.push_str(err);
+                }
+                if out.is_empty() {
+                    format!("run {} {}", o.run_id, o.status)
+                } else {
+                    out
+                }
+            }
+            ToolOutput::CursorListAgents(o) => {
+                if o.agents.is_empty() {
+                    "No Cursor agents.".into()
+                } else {
+                    o.agents
+                        .iter()
+                        .map(|a| format!("{} {} {}", a.agent_id, a.name, a.summary))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                }
+            }
             ToolOutput::Dynamic(v) => serde_json::to_string_pretty(&v.value).unwrap_or_default(),
             ToolOutput::Text(text) => text.text.clone(),
             ToolOutput::ImageGen(m) => m.prompt_text("Image generated"),

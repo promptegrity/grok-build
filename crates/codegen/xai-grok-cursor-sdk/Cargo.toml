@@ -1,0 +1,36 @@
+[package]
+license = "Apache-2.0"
+name = "xai-grok-cursor-sdk"
+version = "0.1.0"
+edition.workspace = true
+description = "Cursor SDK Bridge adapter: spawn sidecar, Connect/sdk.v1 client"
+
+[dependencies]
+bytes = { workspace = true }
+pbjson-types = "0.8"
+prost = { workspace = true }
+reqwest = { workspace = true, features = ["rustls-tls", "stream"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "sync", "time"] }
+tokio-util = { workspace = true, features = ["io"] }
+tonic = { workspace = true }
+tonic-prost = { workspace = true }
+tracing = { workspace = true }
+which = { workspace = true }
+xai-grok-config = { workspace = true }
+xai-tty-utils = { workspace = true }
+
+[build-dependencies]
+xai-proto-build = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "time"] }
+
+[package.metadata.cargo-shear]
+ignored = ["pbjson-types", "tonic", "tonic-prost"]
+
+[lints]
+workspace = true

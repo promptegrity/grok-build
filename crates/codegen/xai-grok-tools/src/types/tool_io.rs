@@ -22,6 +22,9 @@ use crate::implementations::grok_build::grep::GrepSearchInput;
 use crate::implementations::grok_build::image_edit::ImageEditInput;
 use crate::implementations::grok_build::image_gen::ImageGenInput;
 use crate::implementations::grok_build::list_dir::ListDirInput;
+use crate::implementations::cursor::{
+    CursorCreateAgentInput, CursorListAgentsInput, CursorListModelsInput, CursorSendInput,
+};
 use crate::implementations::grok_build::list_peers::ListPeersInput;
 use crate::implementations::grok_build::read_file::ReadFileInput;
 use crate::implementations::grok_build::search_replace::SearchReplaceInput;
@@ -100,6 +103,10 @@ pub enum ToolInput {
     Workflow(crate::implementations::grok_build::workflow::WorkflowToolInput),
     ListPeers(ListPeersInput),
     SendMessage(SendMessageInput),
+    CursorListModels(CursorListModelsInput),
+    CursorCreateAgent(CursorCreateAgentInput),
+    CursorSend(CursorSendInput),
+    CursorListAgents(CursorListAgentsInput),
     /// Dynamic input for runtime-registered tools (MCP, etc.)
     Dynamic(serde_json::Value),
 }

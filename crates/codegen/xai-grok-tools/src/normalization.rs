@@ -131,6 +131,10 @@ pub fn canonical_input(input: &ToolInput) -> Option<serde_json::Value> {
         | ToolInput::Workflow(_)
         | ToolInput::ListPeers(_)
         | ToolInput::SendMessage(_)
+        | ToolInput::CursorListModels(_)
+        | ToolInput::CursorCreateAgent(_)
+        | ToolInput::CursorSend(_)
+        | ToolInput::CursorListAgents(_)
         | ToolInput::Dynamic(_) => return None,
     })
 }

@@ -1783,6 +1783,18 @@ pub(crate) fn execute(
                 }
             });
         }
+        Effect::DeleteCursorAgent {
+            cwd,
+            cursor_agent_id,
+        } => {
+            tasks.spawn(async move {
+                let result = delete_cursor_agent(cwd, &cursor_agent_id).await;
+                TaskResult::CursorAgentDeleted {
+                    cursor_agent_id,
+                    result,
+                }
+            });
+        }
         Effect::CursorProxySend {
             agent_id,
             cwd,
@@ -4794,7 +4806,17 @@ async fn create_cursor_agent(cwd: PathBuf, model_id: &str) -> Result<String, Str
         .create_local_agent(model_id, Some("grok-cursor-client".into()))
         .await
         .map_err(|e| e.to_string())?;
+    xai_grok_tools::implementations::cursor::remember_client_agent(&created.agent_id);
     Ok(created.agent_id)
+}
+
+async fn delete_cursor_agent(cwd: PathBuf, cursor_agent_id: &str) -> Result<(), String> {
+    let client = xai_grok_tools::implementations::cursor::shared_client(cwd)
+        .map_err(|e| e.to_string())?;
+    client
+        .delete_agent(cursor_agent_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 async fn cursor_proxy_send(

@@ -351,6 +351,10 @@ pub(in crate::app::dispatch) fn dispatch_new_session_inner_with_id(
     app: &mut AppView,
     model_id: Option<acp::ModelId>,
 ) -> (AgentId, Vec<Effect>) {
+    let previous_agent_id = match app.active_view {
+        ActiveView::Agent(id) => Some(id),
+        _ => None,
+    };
     let (previous_session_id, effective_cwd, inherit_worktree) = match get_active_agent(app) {
         Some(a) => (
             a.session.session_id.clone(),
@@ -359,7 +363,10 @@ pub(in crate::app::dispatch) fn dispatch_new_session_inner_with_id(
         ),
         None => (None, app.cwd.clone(), false),
     };
-    let mut effects = unregister_session_effect(previous_session_id);
+    let mut effects = previous_agent_id
+        .map(|id| crate::cursor_client::clear_cursor_client(app, id))
+        .unwrap_or_default();
+    effects.extend(unregister_session_effect(previous_session_id));
     reseed_tip_for_new_session(app);
     let agent_id = AgentId(app.next_agent_id);
     app.next_agent_id += 1;
@@ -480,8 +487,13 @@ pub(in crate::app::dispatch) fn dispatch_new_session_inner_with_id(
 }
 /// Exit the current session and return to the welcome screen.
 pub(in crate::app::dispatch) fn dispatch_exit_session(app: &mut AppView) -> Vec<Effect> {
-    let effects =
-        unregister_session_effect(get_active_agent(app).and_then(|a| a.session.session_id.clone()));
+    let mut effects = match app.active_view {
+        ActiveView::Agent(id) => crate::cursor_client::clear_cursor_client(app, id),
+        _ => vec![],
+    };
+    effects.extend(unregister_session_effect(
+        get_active_agent(app).and_then(|a| a.session.session_id.clone()),
+    ));
     show_welcome(app);
     app.welcome_prompt_focused = true;
     app.session_picker_entries = None;
@@ -596,12 +608,13 @@ pub(in crate::app::dispatch) fn dispatch_delete_current_session_answered(
         return vec![];
     };
     let after = after_delete_current_session(app, id);
-    let mut effects = vec![Effect::CancelTurn {
+    let mut effects = crate::cursor_client::clear_cursor_client(app, id);
+    effects.push(Effect::CancelTurn {
         session_id: session_id.clone(),
         cancel_subagents: true,
         trigger: None,
         rewind_if_no_output: false,
-    }];
+    });
     effects.extend(
         running_bg_tasks
             .into_iter()

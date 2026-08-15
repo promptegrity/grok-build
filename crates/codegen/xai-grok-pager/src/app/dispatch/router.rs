@@ -152,12 +152,14 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
             if let Some(tx) = &app.voice_cmd_tx {
                 let _ = tx.try_send(xai_grok_voice::VoiceCommand::Shutdown);
             }
-            let mut effects = unregister_all_active_sessions(app);
+            let mut effects = crate::cursor_client::clear_all_cursor_clients(app);
+            effects.extend(unregister_all_active_sessions(app));
             effects.push(Effect::Quit);
             effects
         }
         Action::QuitForUpdate => {
-            let mut effects = unregister_all_active_sessions(app);
+            let mut effects = crate::cursor_client::clear_all_cursor_clients(app);
+            effects.extend(unregister_all_active_sessions(app));
             app.quit_for_update = true;
             effects.push(Effect::Quit);
             effects
@@ -187,7 +189,8 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
                     session_id,
                 });
             }
-            let mut effects = unregister_all_active_sessions(app);
+            let mut effects = crate::cursor_client::clear_all_cursor_clients(app);
+            effects.extend(unregister_all_active_sessions(app));
             effects.push(Effect::Quit);
             effects
         }
@@ -928,9 +931,9 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
             let ActiveView::Agent(id) = app.active_view else {
                 return vec![];
             };
-            super::cursor_client::leave_cursor_client_if_active(app, id);
+            let mut effects = super::cursor_client::leave_cursor_client_if_active(app, id);
             let Some(agent) = app.agents.get_mut(&id) else {
-                return vec![];
+                return effects;
             };
             let Some(session_id) = agent.session.session_id.clone() else {
                 let prev_model = agent.session.models.current.clone();
@@ -951,23 +954,23 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
                         effort,
                         prev_model_id: rollback_prev,
                     });
-                return if unchanged {
-                    vec![]
-                } else {
-                    vec![Effect::PersistPreferredModel {
+                if !unchanged {
+                    effects.push(Effect::PersistPreferredModel {
                         model_id,
                         reasoning_effort: resolved_effort,
-                    }]
-                };
+                    });
+                }
+                return effects;
             };
             agent.session.model_switch_pending = true;
-            vec![Effect::SwitchModel {
+            effects.push(Effect::SwitchModel {
                 agent_id: id,
                 session_id,
                 model_id,
                 effort,
                 prev_model_id: None,
-            }]
+            });
+            effects
         }
         Action::AnnouncementsHide => {
             let shown_key = crate::views::announcements::first_session_announcement(

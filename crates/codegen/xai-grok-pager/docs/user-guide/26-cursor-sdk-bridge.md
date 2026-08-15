@@ -65,7 +65,7 @@ Pick a Cursor model from the dropdown (or type `/model-cursor composer-2`). Grok
 
 - Each prompt you type is sent to Cursor and the session waits for the reply. The Grok model is not in the loop. While Cursor works, Grok 2 shows a spinner with the current step and streams the reply as it arrives.
 - Peer messages from another Grok session are forwarded the same way. When Cursor finishes, this session replies to the sender automatically.
-- `/model <grok-name>` or `/new` leaves client mode.
+- `/model <grok-name>`, `/new` (`/clear`), `/home`, or `/quit` (`/exit`) leaves client mode and **deletes** the Cursor agent created for this session.
 
 The status bar shows `Cursor · {model}` while the mode is active.
 

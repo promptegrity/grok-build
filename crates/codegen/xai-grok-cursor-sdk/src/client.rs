@@ -5,10 +5,10 @@ use crate::auth::resolve_cursor_api_key;
 use crate::bridge::{BridgeHandle, BridgeManager};
 use crate::error::CursorSdkError;
 use crate::pb::{
-    AgentOptions, CreateAgentRequest, CursorRequestOptions, GetRunOptions, GetRunRequest,
-    ListAgentsOptions, ListAgentsRequest, ListModelsRequest, LocalAgentOptions, ModelSelection,
-    RunLifecycleStatus, RunStreamMessage, SendRequest, UserMessage, WaitLiveRunRequest,
-    run_stream_message,
+    AgentOperationOptions, AgentOptions, CreateAgentRequest, CursorRequestOptions,
+    DeleteAgentRequest, GetRunOptions, GetRunRequest, ListAgentsOptions, ListAgentsRequest,
+    ListModelsRequest, LocalAgentOptions, ModelSelection, RunLifecycleStatus, RunStreamMessage,
+    SendRequest, UserMessage, WaitLiveRunRequest, run_stream_message,
 };
 use crate::transport;
 
@@ -248,6 +248,27 @@ impl CursorSdkClient {
         resp.run.ok_or_else(|| {
             CursorSdkError::message(format!("GetRun returned no snapshot for {run_id}"))
         })
+    }
+
+    /// Permanently delete a Cursor agent and its durable data.
+    pub async fn delete_agent(&self, agent_id: &str) -> Result<(), CursorSdkError> {
+        let handle = self.handle().await?;
+        let _: crate::pb::DeleteAgentResponse = transport::unary(
+            handle.http(),
+            &handle.url,
+            AGENT_SERVICE,
+            "DeleteAgent",
+            &handle.bearer,
+            &DeleteAgentRequest {
+                agent_id: agent_id.to_string(),
+                options: Some(AgentOperationOptions {
+                    api_key: self.api_key.clone(),
+                    cwd: self.workspace.to_str().unwrap_or_default().to_string(),
+                }),
+            },
+        )
+        .await?;
+        Ok(())
     }
 
     pub async fn list_agents(&self) -> Result<Vec<AgentSummary>, CursorSdkError> {

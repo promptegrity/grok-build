@@ -597,6 +597,10 @@ pub(super) fn dispatch_task_result(result: TaskResult, app: &mut AppView) -> Vec
         TaskResult::CursorProxySendComplete { agent_id, result } => {
             super::cursor_client::handle_cursor_proxy_send_complete(app, agent_id, result)
         }
+        TaskResult::CursorAgentDeleted {
+            cursor_agent_id,
+            result,
+        } => super::cursor_client::handle_cursor_agent_deleted(app, cursor_agent_id, result),
         TaskResult::BgTaskKilled {
             session_id,
             task_id,

@@ -78,10 +78,79 @@ fn slash_model_leaves_cursor_mode() {
     let effects = dispatch(Action::SendPrompt("/model Grok 4.5".into()), &mut app);
     assert!(app.agents[&id].cursor_client.is_none());
     assert!(
+        effects.iter().any(|e| matches!(
+            e,
+            Effect::DeleteCursorAgent { cursor_agent_id, .. } if cursor_agent_id == "agt_test"
+        )),
+        "leaving Cursor must delete the agent, got {effects:?}"
+    );
+    assert!(
         effects
             .iter()
             .all(|e| !matches!(e, Effect::CursorProxySend { .. })),
         "leaving Cursor must not proxy, got {effects:?}"
+    );
+}
+
+#[test]
+fn quit_deletes_cursor_agent() {
+    let mut app = test_app_with_agent();
+    enter_cursor_client(&mut app);
+    let effects = dispatch(Action::Quit, &mut app);
+    assert!(app.agents[&AgentId(0)].cursor_client.is_none());
+    assert!(
+        effects.iter().any(|e| matches!(
+            e,
+            Effect::DeleteCursorAgent { cursor_agent_id, .. } if cursor_agent_id == "agt_test"
+        )),
+        "quit must delete the Cursor agent, got {effects:?}"
+    );
+    assert!(effects.iter().any(|e| matches!(e, Effect::Quit)));
+}
+
+#[test]
+fn new_session_deletes_cursor_agent() {
+    let mut app = test_app_with_agent();
+    enter_cursor_client(&mut app);
+    let effects = dispatch(Action::NewSession, &mut app);
+    assert!(app.agents[&AgentId(0)].cursor_client.is_none());
+    assert!(
+        effects.iter().any(|e| matches!(
+            e,
+            Effect::DeleteCursorAgent { cursor_agent_id, .. } if cursor_agent_id == "agt_test"
+        )),
+        "/new must delete the Cursor agent, got {effects:?}"
+    );
+}
+
+#[test]
+fn activate_cursor_client_replaces_existing_agent() {
+    let mut app = test_app_with_agent();
+    enter_cursor_client(&mut app);
+    let effects = dispatch(
+        Action::ActivateCursorClient {
+            model_id: "composer-2".into(),
+            display_name: "Composer 2".into(),
+        },
+        &mut app,
+    );
+    assert!(
+        effects.iter().any(|e| matches!(
+            e,
+            Effect::DeleteCursorAgent { cursor_agent_id, .. } if cursor_agent_id == "agt_test"
+        )),
+        "re-bind must delete the previous Cursor agent, got {effects:?}"
+    );
+    assert!(
+        effects.iter().any(|e| matches!(
+            e,
+            Effect::CreateCursorAgent {
+                model_id,
+                display_name,
+                ..
+            } if model_id == "composer-2" && display_name == "Composer 2"
+        )),
+        "expected CreateCursorAgent, got {effects:?}"
     );
 }
 

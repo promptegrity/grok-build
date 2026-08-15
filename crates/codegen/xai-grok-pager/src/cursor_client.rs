@@ -125,19 +125,27 @@ pub fn status_label(session: &CursorClientSession) -> String {
     format!("Cursor · {}", session.display_name)
 }
 
-/// Leave Cursor client mode. Returns true if a session was active.
-pub fn clear_cursor_client(app: &mut AppView, agent_id: AgentId) -> bool {
+/// Leave Cursor client mode. Emits `DeleteCursorAgent` when a session was bound.
+pub fn clear_cursor_client(app: &mut AppView, agent_id: AgentId) -> Vec<Effect> {
     let Some(agent) = app.agents.get_mut(&agent_id) else {
-        return false;
+        return vec![];
     };
     clear_cursor_client_on_agent(agent)
 }
 
+/// Leave Cursor client mode on every agent (quit / relaunch).
+pub fn clear_all_cursor_clients(app: &mut AppView) -> Vec<Effect> {
+    app.agents
+        .values_mut()
+        .flat_map(clear_cursor_client_on_agent)
+        .collect()
+}
+
 /// Leave Cursor client mode on a specific agent view.
-pub fn clear_cursor_client_on_agent(agent: &mut AgentView) -> bool {
+pub fn clear_cursor_client_on_agent(agent: &mut AgentView) -> Vec<Effect> {
     let Some(session) = agent.cursor_client.take() else {
         agent.cursor_proxy_queue.clear();
-        return false;
+        return vec![];
     };
     agent.cursor_proxy_queue.clear();
     if let Some(sid) = agent.session.session_id.as_ref() {
@@ -150,10 +158,14 @@ pub fn clear_cursor_client_on_agent(agent: &mut AgentView) -> bool {
     agent
         .scrollback
         .push_block(crate::scrollback::block::RenderBlock::system(format!(
-            "Left Cursor client mode ({}). Prompts go to Grok again.",
+            "Left Cursor client mode ({}). The Cursor agent was deleted. \
+             Prompts go to Grok again.",
             session.display_name
         )));
-    true
+    vec![Effect::DeleteCursorAgent {
+        cwd: agent.session.cwd.clone(),
+        cursor_agent_id: session.agent_id,
+    }]
 }
 
 /// Queue or start a Cursor proxy send. Echoes the user text first.

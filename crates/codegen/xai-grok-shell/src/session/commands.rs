@@ -798,6 +798,13 @@ pub enum SessionCommand {
         /// text-only / older clients.
         images: Vec<acp::ImageContent>,
     },
+    /// Peer inbox message for a session in Cursor client/proxy mode.
+    /// Does not start a Grok turn; the pager forwards it to Cursor.
+    CursorProxyInbound {
+        text: String,
+        reply_to: String,
+        from_name: String,
+    },
     /// Trigger a model turn so the model can print a visible goal progress
     /// summary.  The goal orchestrator injects a system reminder into context
     /// (via `push_parent_reminder`) *before* sending this command.  The session

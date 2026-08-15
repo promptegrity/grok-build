@@ -1744,7 +1744,10 @@ pub(in crate::app::dispatch) fn set_default_model(
         return vec![];
     }
 
-    // Idempotent: same model already active → no-op.
+    // `/model` is the documented exit from Cursor client mode.
+    crate::cursor_client::clear_cursor_client(app, aid);
+
+    // Idempotent: same Grok model already active → no SwitchModel.
     if prev_id.as_ref() == Some(&new_id) {
         return vec![];
     }

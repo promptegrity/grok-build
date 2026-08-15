@@ -34,9 +34,9 @@ impl ReadyInfo {
             return Ok(url.trim_end_matches('/').to_string());
         }
         let host = self.host.as_deref().unwrap_or("127.0.0.1");
-        let port = self.port.ok_or_else(|| {
-            CursorSdkError::Handshake("ready line missing url and port".into())
-        })?;
+        let port = self
+            .port
+            .ok_or_else(|| CursorSdkError::Handshake("ready line missing url and port".into()))?;
         let host = if host.contains(':') && !host.starts_with('[') {
             format!("[{host}]")
         } else {
@@ -106,7 +106,11 @@ mod tests {
 
     #[test]
     fn non_ready_is_none() {
-        assert!(parse_ready_line("listening on 127.0.0.1").unwrap().is_none());
+        assert!(
+            parse_ready_line("listening on 127.0.0.1")
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

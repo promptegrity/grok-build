@@ -1761,6 +1761,50 @@ pub(crate) fn execute(
                     }
                 });
         }
+        Effect::FetchCursorModels { agent_id, cwd } => {
+            tasks.spawn(async move {
+                let result = fetch_cursor_models(cwd).await;
+                TaskResult::CursorModelsLoaded { agent_id, result }
+            });
+        }
+        Effect::CreateCursorAgent {
+            agent_id,
+            cwd,
+            model_id,
+            display_name,
+        } => {
+            tasks.spawn(async move {
+                let result = create_cursor_agent(cwd, &model_id).await;
+                TaskResult::CursorAgentCreated {
+                    agent_id,
+                    model_id,
+                    display_name,
+                    result,
+                }
+            });
+        }
+        Effect::CursorProxySend {
+            agent_id,
+            cwd,
+            cursor_agent_id,
+            text,
+            reply_to,
+            from_name,
+            from_session_id,
+        } => {
+            tasks.spawn(async move {
+                let result = cursor_proxy_send(
+                    cwd,
+                    &cursor_agent_id,
+                    &text,
+                    reply_to.as_deref(),
+                    &from_name,
+                    &from_session_id,
+                )
+                .await;
+                TaskResult::CursorProxySendComplete { agent_id, result }
+            });
+        }
         Effect::ProbeClipboardAttachment { ctx, change_count } => {
             tasks
                 .spawn(async move {
@@ -4723,5 +4767,74 @@ fn build_interject_params(
     }
     params
 }
+async fn fetch_cursor_models(
+    cwd: PathBuf,
+) -> Result<Vec<crate::cursor_client::CursorModelChoice>, String> {
+    let client = xai_grok_tools::implementations::cursor::shared_client(cwd)
+        .map_err(|e| e.to_string())?;
+    let models = client.list_models().await.map_err(|e| e.to_string())?;
+    Ok(models
+        .into_iter()
+        .map(|m| crate::cursor_client::CursorModelChoice {
+            id: m.id,
+            display_name: m.display_name,
+            description: m.description,
+        })
+        .collect())
+}
+
+async fn create_cursor_agent(cwd: PathBuf, model_id: &str) -> Result<String, String> {
+    let client = xai_grok_tools::implementations::cursor::shared_client(cwd)
+        .map_err(|e| e.to_string())?;
+    let created = client
+        .create_local_agent(model_id, Some("grok-cursor-client".into()))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(created.agent_id)
+}
+
+async fn cursor_proxy_send(
+    cwd: PathBuf,
+    cursor_agent_id: &str,
+    text: &str,
+    reply_to: Option<&str>,
+    from_name: &str,
+    from_session_id: &str,
+) -> Result<String, String> {
+    let client = xai_grok_tools::implementations::cursor::shared_client(cwd)
+        .map_err(|e| e.to_string())?;
+    let sent = client
+        .send(cursor_agent_id, text)
+        .await
+        .map_err(|e| e.to_string())?;
+    let reply = if sent.text.trim().is_empty() {
+        sent.error.clone().unwrap_or_default()
+    } else {
+        sent.text
+    };
+    if let Some(target) = reply_to.filter(|s| !s.is_empty())
+        && !reply.trim().is_empty()
+        && let Ok(live) = xai_grok_peers::list_live()
+        && let Some(peer) = live
+            .iter()
+            .find(|p| p.name == target || p.session_id == target)
+    {
+        let _ = xai_grok_peers::send_plain_message(
+            std::path::Path::new(&peer.inbox_path),
+            from_name,
+            from_session_id,
+            &reply,
+            Some(from_name),
+        )
+        .await;
+    }
+    if reply.trim().is_empty() {
+        if let Some(err) = sent.error {
+            return Err(err);
+        }
+    }
+    Ok(reply)
+}
+
 #[cfg(test)]
 mod tests;

@@ -1781,7 +1781,12 @@ mod tests {
             ToolConfig::from(&cursor::CursorSendTool).id,
             ToolConfig::from(&cursor::CursorListAgentsTool).id,
         ];
-        for name in ["grok-build", "grok-build-concise", "grok-build-plan", "plan"] {
+        for name in [
+            "grok-build",
+            "grok-build-concise",
+            "grok-build-plan",
+            "plan",
+        ] {
             let toolset = toolset_for_preset(name).unwrap();
             let ids: std::collections::HashSet<&str> =
                 toolset.tools.iter().map(|t| t.id.as_str()).collect();

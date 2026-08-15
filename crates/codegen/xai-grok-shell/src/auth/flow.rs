@@ -1011,7 +1011,10 @@ pub fn run_cli_login_cursor(api_key: Option<String>) -> anyhow::Result<()> {
     };
     let home = grok_home::grok_home();
     super::storage::store_cursor_api_key(&home, &key)?;
-    println!("Cursor API key saved to {}/auth.json (cursor::api_key).", home.display());
+    println!(
+        "Cursor API key saved to {}/auth.json (cursor::api_key).",
+        home.display()
+    );
     println!("This key is billed on your Cursor account, not xAI.");
     Ok(())
 }

@@ -154,6 +154,28 @@ impl SessionActor {
     /// Broadcast a mid-turn interjection to every attached client.
     /// The originator uses `id` to claim its optimistic prompt block; other
     /// clients render the notification normally.
+    pub(super) fn broadcast_cursor_proxy_inbound(
+        &self,
+        text: &str,
+        reply_to: &str,
+        from_name: &str,
+    ) {
+        let payload = serde_json::json!({
+            "sessionId": self.session_info.id.0.as_ref(),
+            "text": text,
+            "replyTo": reply_to,
+            "fromName": from_name,
+        });
+        if let Ok(params) = serde_json::value::to_raw_value(&payload) {
+            self.notifications
+                .gateway
+                .forward_fire_and_forget(acp::ExtNotification::new(
+                    "x.ai/cursor-proxy/inbound",
+                    params.into(),
+                ));
+        }
+    }
+
     pub(super) fn broadcast_interjection(&self, text: &str, id: Option<&str>) {
         let mut payload = serde_json::json!({
             "sessionId": self.session_info.id.0.as_ref(),

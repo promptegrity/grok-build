@@ -1370,6 +1370,11 @@ pub struct AgentView {
     /// Consumed in the `SessionCreated` / `WorktreeSessionCreated` handlers,
     /// mirroring `AgentSession.deferred_model_switch`.
     pub(crate) deferred_session_mode: Option<xai_grok_tools::types::SessionMode>,
+    /// Cursor client/proxy session created by `/model-cursor`.
+    pub(crate) cursor_client: Option<crate::cursor_client::CursorClientSession>,
+    /// Prompts waiting while a Cursor send is in flight.
+    pub(crate) cursor_proxy_queue:
+        std::collections::VecDeque<crate::cursor_client::CursorProxyQueued>,
     pub(crate) pending_extensions_fetch: bool,
     /// Whether this view was last rendered inside the dashboard's session
     /// overlay. Updated every frame by `draw`; read when building the

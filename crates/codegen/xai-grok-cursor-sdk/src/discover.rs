@@ -62,7 +62,7 @@ pub(crate) fn discover_bridge_bin_with(
 }
 
 fn dunce_canonicalize(path: &Path) -> std::io::Result<PathBuf> {
-    std::fs::canonicalize(path)
+    dunce::canonicalize(path)
 }
 
 #[cfg(test)]
@@ -98,14 +98,15 @@ mod tests {
         touch_exec(&grok);
         let bridge = dir.path().join("cursor-sdk-bridge");
         touch_exec(&bridge);
-        let got = discover_bridge_bin_with(
-            None,
-            Some(grok),
-            dir.path().join("unused-home"),
-            |_| panic!("PATH should not be consulted"),
-        )
-        .unwrap();
-        assert_eq!(got, bridge);
+        let got =
+            discover_bridge_bin_with(None, Some(grok), dir.path().join("unused-home"), |_| {
+                panic!("PATH should not be consulted")
+            })
+            .unwrap();
+        assert_eq!(
+            std::fs::canonicalize(&got).unwrap(),
+            std::fs::canonicalize(&bridge).unwrap()
+        );
     }
 
     #[test]
@@ -115,10 +116,11 @@ mod tests {
         fs::create_dir_all(home.join("bin")).unwrap();
         let bridge = home.join("bin").join("cursor-sdk-bridge");
         touch_exec(&bridge);
-        let got = discover_bridge_bin_with(None, Some(dir.path().join("missing-grok")), home, |_| {
-            panic!("PATH should not be consulted")
-        })
-        .unwrap();
+        let got =
+            discover_bridge_bin_with(None, Some(dir.path().join("missing-grok")), home, |_| {
+                panic!("PATH should not be consulted")
+            })
+            .unwrap();
         assert_eq!(got, bridge);
     }
 

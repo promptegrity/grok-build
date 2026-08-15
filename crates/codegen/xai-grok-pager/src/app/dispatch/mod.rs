@@ -16,6 +16,7 @@ mod auth;
 mod billing;
 mod cta;
 mod ctx;
+mod cursor_client;
 mod dashboard;
 mod dashboard_telemetry;
 pub(crate) mod external_editor;

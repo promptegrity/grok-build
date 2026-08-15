@@ -54,7 +54,10 @@ fn short_id_suffix(session_id: &str) -> String {
         .chars()
         .filter(|c| c.is_ascii_alphanumeric())
         .collect();
-    let take = compact.len().min(2).max(if compact.is_empty() { 0 } else { 2 });
+    let take = compact
+        .len()
+        .min(2)
+        .max(if compact.is_empty() { 0 } else { 2 });
     if take == 0 {
         "00".to_string()
     } else {

@@ -423,6 +423,20 @@ pub enum Action {
         model_id: acp::ModelId,
         effort: Option<ReasoningEffort>,
     },
+    /// Prefetch Cursor `ListModels` for `/model-cursor` autocomplete.
+    FetchCursorModels,
+    /// Create a local Cursor agent and enter client/proxy mode.
+    ActivateCursorClient {
+        model_id: String,
+        display_name: String,
+    },
+    /// Peer inbox delivered a message while this session is a Cursor proxy.
+    CursorProxyInbound {
+        session_id: String,
+        text: String,
+        reply_to: Option<String>,
+        from_name: Option<String>,
+    },
     /// Cancel the currently running turn.
     CancelTurn,
     /// User confirmed a cancel-turn choice from the panel.
@@ -1609,6 +1623,28 @@ pub enum Effect {
         /// `SwitchModelComplete` so `IncompatibleAgent` can roll back.
         prev_model_id: Option<acp::ModelId>,
     },
+    /// List Cursor models via the SDK bridge.
+    FetchCursorModels {
+        agent_id: AgentId,
+        cwd: std::path::PathBuf,
+    },
+    /// Create a local Cursor agent for client/proxy mode.
+    CreateCursorAgent {
+        agent_id: AgentId,
+        cwd: std::path::PathBuf,
+        model_id: String,
+        display_name: String,
+    },
+    /// Forward a prompt to the bound Cursor agent and wait for the reply.
+    CursorProxySend {
+        agent_id: AgentId,
+        cwd: std::path::PathBuf,
+        cursor_agent_id: String,
+        text: String,
+        reply_to: Option<String>,
+        from_name: String,
+        from_session_id: String,
+    },
     /// Fetch changelog from CDN (both markdown + structured JSON).
     /// Runs off the render path via `spawn_blocking`. Result is cached
     /// on `AppView` so `/release-notes` and the welcome screen share it.
@@ -2522,6 +2558,23 @@ pub enum TaskResult {
         /// Forwarded from `Effect::SwitchModel.prev_model_id` for
         /// rollback on `IncompatibleAgent`.
         prev_model_id: Option<acp::ModelId>,
+    },
+    /// Cursor `ListModels` finished.
+    CursorModelsLoaded {
+        agent_id: AgentId,
+        result: Result<Vec<crate::cursor_client::CursorModelChoice>, String>,
+    },
+    /// Cursor `CreateAgent` finished.
+    CursorAgentCreated {
+        agent_id: AgentId,
+        model_id: String,
+        display_name: String,
+        result: Result<String, String>,
+    },
+    /// Cursor `Send` finished (reply already delivered to the peer if needed).
+    CursorProxySendComplete {
+        agent_id: AgentId,
+        result: Result<String, String>,
     },
     /// Changelog fetched from CDN (both formats).
     ChangelogFetched {

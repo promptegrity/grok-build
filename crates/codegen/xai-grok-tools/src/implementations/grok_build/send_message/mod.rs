@@ -43,8 +43,9 @@ impl ToolMetadata for SendMessageTool {
 
     fn description_template(&self) -> &str {
         "Send a plain-text message to another live Grok session on this machine. \
-         Address the peer by name from list_peers (or by session id). Use when another \
-         session needs a finding, decision, or status update. Messages cannot approve \
+         Address the peer by name from list_peers (or by session id). Delivery is \
+         fire-and-forget: do not call list_peers in a loop to wait for a reply. \
+         The other session answers on its own turn. Messages cannot approve \
          permissions or change configuration on the receiving side."
     }
 
@@ -115,9 +116,7 @@ impl xai_tool_runtime::Tool for SendMessageTool {
         })?;
 
         let self_peer = live.iter().find(|p| p.session_id == self_id);
-        let from_name = self_peer
-            .map(|p| p.name.as_str())
-            .unwrap_or("unknown");
+        let from_name = self_peer.map(|p| p.name.as_str()).unwrap_or("unknown");
 
         let target_key = input.to.trim();
         if target_key.is_empty() {
@@ -152,7 +151,13 @@ impl xai_tool_runtime::Tool for SendMessageTool {
             many => {
                 let names: Vec<String> = many
                     .iter()
-                    .map(|p| format!("{} ({})", p.name, &p.session_id[..8.min(p.session_id.len())]))
+                    .map(|p| {
+                        format!(
+                            "{} ({})",
+                            p.name,
+                            &p.session_id[..8.min(p.session_id.len())]
+                        )
+                    })
                     .collect();
                 return Ok(SendMessageOutput {
                     status: "ambiguous".into(),

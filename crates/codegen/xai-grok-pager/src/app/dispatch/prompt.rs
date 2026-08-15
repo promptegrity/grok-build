@@ -744,6 +744,12 @@ pub(super) fn dispatch_send_prompt_inner(
             agent.prompt.set_text("");
         }
         return dispatch(Action::Quit, app);
+    } else if agent.cursor_client.is_some() {
+        if consume_input {
+            drain_prompt_state_to_last_queued(agent);
+            agent.prompt.set_text("");
+        }
+        return crate::cursor_client::enqueue_or_send(agent, text, None, None);
     } else {
         // ── Server-authoritative immediate send (plain prompt only) ──
         // A plain prompt typed while a turn is RUNNING is sent to the agent

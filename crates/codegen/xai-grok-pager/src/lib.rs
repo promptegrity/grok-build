@@ -8,6 +8,7 @@ pub mod app;
 pub mod client_identity;
 pub mod completions_cmd;
 mod config_toml_edit;
+pub mod cursor_client;
 pub mod diagnostics;
 pub mod disk_usage_cmd;
 pub mod docs;

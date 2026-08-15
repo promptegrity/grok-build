@@ -877,6 +877,7 @@ impl AgentView {
             esc_owned_before_agent,
         } = app_params;
         self.scrollback.begin_frame();
+        crate::cursor_client::maybe_prefetch_models(self);
         self.in_dashboard_overlay = in_dashboard_overlay;
         self.overlay_can_cycle = overlay_can_cycle;
         let super::BannerSlotParams {
@@ -960,9 +961,10 @@ impl AgentView {
         let layout_cfg = &appearance.scrollback.layout;
         let scrollbar_cfg = &appearance.scrollback.scrollbar;
         let model_id = self
-            .session
-            .models
-            .current_model_name()
+            .cursor_client
+            .as_ref()
+            .map(crate::cursor_client::status_label)
+            .or_else(|| self.session.models.current_model_name())
             .unwrap_or_else(|| "unknown".to_string());
         let effective_plan = self.plan_mode_pending.unwrap_or(self.plan_mode_active);
         let casual_commenting = self.is_casual_commenting();

@@ -15,6 +15,7 @@ pub mod transport;
 
 /// Generated `sdk.v1` protobuf types (tonic stubs are unused).
 pub mod pb {
+    #![allow(clippy::large_enum_variant)]
     include!(concat!(env!("OUT_DIR"), "/sdk.v1.rs"));
 }
 

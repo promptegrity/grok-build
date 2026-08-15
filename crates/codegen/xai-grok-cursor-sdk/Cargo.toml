@@ -6,7 +6,10 @@ edition.workspace = true
 description = "Cursor SDK Bridge adapter: spawn sidecar, Connect/sdk.v1 client"
 
 [dependencies]
+base64 = { workspace = true }
 bytes = { workspace = true }
+dunce = { workspace = true }
+futures-util = { workspace = true }
 pbjson-types = "0.8"
 prost = { workspace = true }
 reqwest = { workspace = true, features = ["rustls-tls", "stream"] }

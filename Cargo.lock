@@ -13496,7 +13496,10 @@ dependencies = [
 name = "xai-grok-cursor-sdk"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "bytes",
+ "dunce",
+ "futures-util",
  "pbjson-types",
  "prost",
  "reqwest 0.12.24",
@@ -13804,6 +13807,7 @@ dependencies = [
  "xai-grok-agent",
  "xai-grok-announcements",
  "xai-grok-config",
+ "xai-grok-cursor-sdk",
  "xai-grok-foreign-sessions",
  "xai-grok-markdown",
  "xai-grok-mermaid",

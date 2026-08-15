@@ -355,7 +355,11 @@ async fn notify_session_title_unpinned(agent: &MvpAgent, session_id: acp::Sessio
 /// Notify connected clients of a session's new title via
 /// `SessionSummaryGenerated`. Manual-rename fan-out stamps
 /// `_meta.x.ai/titleIsManual` so followers can set `display_name`.
-pub(crate) async fn notify_session_title(agent: &MvpAgent, session_id: acp::SessionId, title: &str) {
+pub(crate) async fn notify_session_title(
+    agent: &MvpAgent,
+    session_id: acp::SessionId,
+    title: &str,
+) {
     use crate::extensions::notification::{
         SessionNotification, SessionUpdate, title_is_manual_meta,
     };

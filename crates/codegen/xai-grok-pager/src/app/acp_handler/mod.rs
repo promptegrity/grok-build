@@ -709,6 +709,7 @@ fn handle_ext_notification(notif: &acp::ExtNotification, app: &mut AppView) -> b
         "x.ai/task_backgrounded" => handle_task_backgrounded(notif, app),
         "x.ai/task_completed" => handle_task_completed(notif, app),
         "x.ai/models/update" => handle_models_update(notif, app),
+        "x.ai/cursor-proxy/inbound" => handle_cursor_proxy_inbound(notif, app),
         "x.ai/settings/update" => handle_settings_update(notif, app),
         "x.ai/sessions/changed" => handle_sessions_changed(notif, app),
         "x.ai/queue/changed" => handle_queue_changed(notif, app),
@@ -809,6 +810,32 @@ fn handle_interjection(notif: &acp::ExtNotification, app: &mut AppView) -> bool 
         .scrollback
         .push_block(RenderBlock::interjection_prompt(text));
     is_active
+}
+
+fn handle_cursor_proxy_inbound(notif: &acp::ExtNotification, app: &mut AppView) -> bool {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Inbound {
+        session_id: String,
+        text: String,
+        reply_to: Option<String>,
+        from_name: Option<String>,
+    }
+    let Ok(payload) = serde_json::from_str::<Inbound>(notif.params.get()) else {
+        tracing::warn!("ignoring x.ai/cursor-proxy/inbound without usable payload");
+        return false;
+    };
+    let effects = super::dispatch::dispatch(
+        crate::app::actions::Action::CursorProxyInbound {
+            session_id: payload.session_id,
+            text: payload.text,
+            reply_to: payload.reply_to,
+            from_name: payload.from_name,
+        },
+        app,
+    );
+    app.pending_effects.extend(effects);
+    true
 }
 
 /// Handle an ACP `ext_method` request (blocking request that expects a response).

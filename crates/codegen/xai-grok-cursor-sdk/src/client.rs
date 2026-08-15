@@ -5,9 +5,10 @@ use crate::auth::resolve_cursor_api_key;
 use crate::bridge::{BridgeHandle, BridgeManager};
 use crate::error::CursorSdkError;
 use crate::pb::{
-    AgentOptions, CreateAgentRequest, CursorRequestOptions, ListAgentsRequest, ListAgentsOptions,
-    ListModelsRequest, LocalAgentOptions, ModelSelection, RunStreamMessage, SendRequest,
-    UserMessage, WaitLiveRunRequest, run_stream_message,
+    AgentOptions, CreateAgentRequest, CursorRequestOptions, GetRunOptions, GetRunRequest,
+    ListAgentsOptions, ListAgentsRequest, ListModelsRequest, LocalAgentOptions, ModelSelection,
+    RunLifecycleStatus, RunStreamMessage, SendRequest, UserMessage, WaitLiveRunRequest,
+    run_stream_message,
 };
 use crate::transport;
 
@@ -22,7 +23,10 @@ pub struct CursorSdkClient {
 }
 
 impl CursorSdkClient {
-    pub fn connect(workspace: PathBuf, read_disk_key: impl FnOnce() -> Option<String>) -> Result<Self, CursorSdkError> {
+    pub fn connect(
+        workspace: PathBuf,
+        read_disk_key: impl FnOnce() -> Option<String>,
+    ) -> Result<Self, CursorSdkError> {
         let api_key = resolve_cursor_api_key(read_disk_key)?;
         Ok(Self {
             manager: BridgeManager::new(workspace.clone(), api_key.clone()),
@@ -100,7 +104,7 @@ impl CursorSdkClient {
 
     pub async fn send(&self, agent_id: &str, text: &str) -> Result<SendResult, CursorSdkError> {
         let handle = self.handle().await?;
-        let messages: Vec<RunStreamMessage> = transport::server_stream(
+        let outcome = transport::server_stream_outcome(
             handle.http(),
             &handle.url,
             AGENT_SERVICE,
@@ -118,68 +122,40 @@ impl CursorSdkClient {
         )
         .await?;
 
-        let mut assistant = String::new();
-        let mut status = String::new();
-        let mut run_id = String::new();
-        let mut error = None;
-        for msg in messages {
-            match msg.envelope {
-                Some(run_stream_message::Envelope::SdkMessage(m)) => {
-                    if m.r#type == "assistant" || m.r#type == "assistant_message" {
-                        if let Some(text) = struct_text(&m.message) {
-                            if !assistant.is_empty() {
-                                assistant.push('\n');
-                            }
-                            assistant.push_str(&text);
-                        }
-                    } else if m.r#type == "status"
-                        && let Some(text) = struct_text(&m.message)
-                    {
-                        status = text;
+        let mut folded = fold_run_stream(&outcome.messages);
+
+        // Stream dropped or finished without assistant text: block on WaitLiveRun
+        // so the Grok tool call does not return and trigger a poll loop.
+        if folded.assistant.is_empty() && !folded.run_id.is_empty() {
+            match self.wait_live_run_until_done(&folded.run_id).await {
+                Ok(text) if !text.is_empty() => folded.assistant = text,
+                Ok(_) => {}
+                Err(e) => {
+                    if folded.assistant.is_empty() && outcome.error.is_some() {
+                        return Err(e);
                     }
                 }
-                Some(run_stream_message::Envelope::Result(r)) => {
-                    run_id = r.run_id;
-                    if let Some(code) = r.error_code.filter(|s| !s.is_empty()) {
-                        error = Some(code);
-                    }
-                    if let Some(result) = r.result
-                        && !result.result.is_empty()
-                    {
-                        assistant = result.result;
-                    }
-                }
-                Some(run_stream_message::Envelope::Done(d)) => {
-                    if run_id.is_empty() {
-                        run_id = d.run_id;
-                    }
-                }
-                _ => {}
             }
         }
 
-        if assistant.is_empty() && run_id.is_empty() {
-            // Stream ended without a terminal result — try WaitLiveRun is not
-            // possible without a run id; surface status if we have one.
-        }
-
-        if assistant.is_empty() && !run_id.is_empty() {
-            if let Ok(wait) = self.wait_live_run(&run_id).await {
-                assistant = wait;
-            }
+        if folded.assistant.is_empty()
+            && folded.run_id.is_empty()
+            && let Some(e) = outcome.error
+        {
+            return Err(e);
         }
 
         Ok(SendResult {
-            run_id,
-            text: assistant,
-            status,
-            error,
+            run_id: folded.run_id,
+            text: folded.assistant,
+            status: folded.status,
+            error: folded.error,
         })
     }
 
     pub async fn wait_live_run(&self, run_id: &str) -> Result<String, CursorSdkError> {
         let handle = self.handle().await?;
-        let resp: crate::pb::WaitLiveRunResponse = transport::unary(
+        let resp: crate::pb::WaitLiveRunResponse = transport::unary_with_timeout(
             handle.http(),
             &handle.url,
             AGENT_SERVICE,
@@ -188,9 +164,65 @@ impl CursorSdkClient {
             &WaitLiveRunRequest {
                 run_id: run_id.to_string(),
             },
+            std::time::Duration::from_secs(60 * 60),
         )
         .await?;
         Ok(resp.result.map(|r| r.result).unwrap_or_default())
+    }
+
+    /// Block until the Cursor run is finished (or we have final text).
+    async fn wait_live_run_until_done(&self, run_id: &str) -> Result<String, CursorSdkError> {
+        if let Ok(text) = self.wait_live_run(run_id).await
+            && !text.is_empty()
+        {
+            return Ok(text);
+        }
+        for _ in 0..8 {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            if let Ok(snap) = self.get_run(run_id).await {
+                if !snap.result.is_empty() {
+                    return Ok(snap.result);
+                }
+                if matches!(
+                    snap.status(),
+                    RunLifecycleStatus::Finished
+                        | RunLifecycleStatus::Error
+                        | RunLifecycleStatus::Cancelled
+                        | RunLifecycleStatus::Expired
+                ) {
+                    return Ok(snap.result);
+                }
+            }
+            if let Ok(text) = self.wait_live_run(run_id).await
+                && !text.is_empty()
+            {
+                return Ok(text);
+            }
+        }
+        self.wait_live_run(run_id).await
+    }
+
+    pub async fn get_run(&self, run_id: &str) -> Result<crate::pb::RunSnapshot, CursorSdkError> {
+        let handle = self.handle().await?;
+        let resp: crate::pb::GetRunResponse = transport::unary(
+            handle.http(),
+            &handle.url,
+            AGENT_SERVICE,
+            "GetRun",
+            &handle.bearer,
+            &GetRunRequest {
+                run_id: run_id.to_string(),
+                options: Some(GetRunOptions {
+                    api_key: self.api_key.clone(),
+                    cwd: self.workspace.to_str().unwrap_or_default().to_string(),
+                    ..Default::default()
+                }),
+            },
+        )
+        .await?;
+        resp.run.ok_or_else(|| {
+            CursorSdkError::message(format!("GetRun returned no snapshot for {run_id}"))
+        })
     }
 
     pub async fn list_agents(&self) -> Result<Vec<AgentSummary>, CursorSdkError> {
@@ -204,11 +236,7 @@ impl CursorSdkClient {
             &ListAgentsRequest {
                 options: Some(ListAgentsOptions {
                     api_key: self.api_key.clone(),
-                    cwd: self
-                        .workspace
-                        .to_str()
-                        .unwrap_or_default()
-                        .to_string(),
+                    cwd: self.workspace.to_str().unwrap_or_default().to_string(),
                     ..Default::default()
                 }),
             },
@@ -249,6 +277,83 @@ pub struct AgentSummary {
     pub archived: bool,
 }
 
+struct FoldedRun {
+    assistant: String,
+    status: String,
+    run_id: String,
+    error: Option<String>,
+}
+
+fn fold_run_stream(messages: &[RunStreamMessage]) -> FoldedRun {
+    let mut assistant = String::new();
+    let mut status = String::new();
+    let mut run_id = String::new();
+    let mut error = None;
+    for msg in messages {
+        match &msg.envelope {
+            Some(run_stream_message::Envelope::SdkMessage(m)) => {
+                if (m.r#type == "assistant" || m.r#type == "assistant_message")
+                    && let Some(text) = struct_text(&m.message)
+                {
+                    if !assistant.is_empty() {
+                        assistant.push('\n');
+                    }
+                    assistant.push_str(&text);
+                } else if m.r#type == "status"
+                    && let Some(text) = struct_text(&m.message)
+                {
+                    status = text;
+                }
+            }
+            Some(run_stream_message::Envelope::Result(r)) => {
+                if !r.run_id.is_empty() {
+                    run_id = r.run_id.clone();
+                }
+                if let Some(code) = r.error_code.as_deref().filter(|s| !s.is_empty()) {
+                    error = Some(code.to_string());
+                }
+                if let Some(result) = &r.result
+                    && !result.result.is_empty()
+                {
+                    assistant = result.result.clone();
+                }
+            }
+            Some(run_stream_message::Envelope::Done(d)) => {
+                if run_id.is_empty() && !d.run_id.is_empty() {
+                    run_id = d.run_id.clone();
+                }
+            }
+            Some(run_stream_message::Envelope::InteractionUpdate(u)) => {
+                if let Some(text) = struct_text(&u.update)
+                    && (u.r#type.contains("assistant") || u.r#type.contains("text"))
+                {
+                    assistant.push_str(&text);
+                }
+            }
+            Some(run_stream_message::Envelope::Step(s)) => {
+                if run_id.is_empty()
+                    && let Some(id) = struct_field_string(&s.step, "run_id")
+                        .or_else(|| struct_field_string(&s.step, "runId"))
+                {
+                    run_id = id;
+                }
+            }
+            None => {}
+        }
+    }
+    FoldedRun {
+        assistant,
+        status,
+        run_id,
+        error,
+    }
+}
+
+fn struct_field_string(value: &Option<pbjson_types::Struct>, key: &str) -> Option<String> {
+    let s = value.as_ref()?;
+    s.fields.get(key).and_then(proto_value_string)
+}
+
 fn struct_text(value: &Option<pbjson_types::Struct>) -> Option<String> {
     let s = value.as_ref()?;
     if let Some(v) = s.fields.get("text").or_else(|| s.fields.get("message")) {
@@ -263,5 +368,65 @@ fn proto_value_string(v: &pbjson_types::Value) -> Option<String> {
         Some(pbjson_types::value::Kind::NumberValue(n)) => Some(n.to_string()),
         Some(pbjson_types::value::Kind::BoolValue(b)) => Some(b.to_string()),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pb::{RunResult, RunStreamDone, RunStreamResult, SdkMessage};
+
+    #[test]
+    fn fold_keeps_run_id_from_done_without_assistant() {
+        let messages = vec![RunStreamMessage {
+            envelope: Some(run_stream_message::Envelope::Done(RunStreamDone {
+                agent_id: "a".into(),
+                run_id: "run-1".into(),
+            })),
+            offset: None,
+        }];
+        let folded = fold_run_stream(&messages);
+        assert_eq!(folded.run_id, "run-1");
+        assert!(folded.assistant.is_empty());
+    }
+
+    #[test]
+    fn fold_prefers_result_text() {
+        let messages = vec![RunStreamMessage {
+            envelope: Some(run_stream_message::Envelope::Result(RunStreamResult {
+                agent_id: "a".into(),
+                run_id: "run-2".into(),
+                status: 3,
+                error_code: None,
+                result: Some(RunResult {
+                    result: "final answer".into(),
+                    ..Default::default()
+                }),
+            })),
+            offset: None,
+        }];
+        let folded = fold_run_stream(&messages);
+        assert_eq!(folded.run_id, "run-2");
+        assert_eq!(folded.assistant, "final answer");
+    }
+
+    #[test]
+    fn fold_reads_assistant_sdk_message() {
+        let mut fields = std::collections::HashMap::new();
+        fields.insert(
+            "text".into(),
+            pbjson_types::Value {
+                kind: Some(pbjson_types::value::Kind::StringValue("hi".into())),
+            },
+        );
+        let messages = vec![RunStreamMessage {
+            envelope: Some(run_stream_message::Envelope::SdkMessage(SdkMessage {
+                r#type: "assistant".into(),
+                message: Some(pbjson_types::Struct { fields }),
+            })),
+            offset: None,
+        }];
+        let folded = fold_run_stream(&messages);
+        assert_eq!(folded.assistant, "hi");
     }
 }

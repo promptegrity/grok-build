@@ -1,7 +1,7 @@
 //! Cursor SDK Bridge tools (`cursor_list_models`, `cursor_create_agent`, …).
 
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::types::requirements::{Expr, ToolRequirement};
 use crate::types::resources::Cwd;
@@ -9,26 +9,55 @@ use crate::types::tool::{ToolKind, ToolNamespace};
 use crate::types::tool_metadata::{ToolMetadata, shared_resources};
 use xai_grok_cursor_sdk::{CursorSdkClient, read_stored_cursor_api_key};
 
-fn process_client(workspace: PathBuf) -> Result<Arc<CursorSdkClient>, xai_tool_runtime::ToolError> {
-    static CLIENT: OnceLock<Arc<CursorSdkClient>> = OnceLock::new();
-    if let Some(existing) = CLIENT.get() {
-        return Ok(existing.clone());
-    }
-    let created = CursorSdkClient::connect(workspace, read_stored_cursor_api_key).map_err(|e| {
-        xai_tool_runtime::ToolError::custom("cursor_sdk", e.to_string())
-    })?;
-    Ok(CLIENT.get_or_init(|| Arc::new(created)).clone())
+/// Session-injected Cursor SDK client (one sidecar per Grok process).
+#[derive(Clone)]
+pub struct CursorSdkClientResource(pub Arc<CursorSdkClient>);
+
+fn client_slot() -> &'static Mutex<Option<Arc<CursorSdkClient>>> {
+    static SLOT: OnceLock<Mutex<Option<Arc<CursorSdkClient>>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(None))
 }
 
-async fn workspace_from_ctx(
+/// Lazy process-wide client. Does not spawn the sidecar until the first RPC.
+pub fn shared_client(
+    workspace: PathBuf,
+) -> Result<Arc<CursorSdkClient>, xai_tool_runtime::ToolError> {
+    let mut slot = client_slot().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(existing) = slot.as_ref() {
+        return Ok(existing.clone());
+    }
+    let created = CursorSdkClient::connect(workspace, read_stored_cursor_api_key)
+        .map_err(|e| xai_tool_runtime::ToolError::custom("cursor_sdk", e.to_string()))?;
+    let arc = Arc::new(created);
+    *slot = Some(arc.clone());
+    Ok(arc)
+}
+
+/// Graceful sidecar shutdown (primary session end). No-op if unused.
+pub async fn close_shared_client() {
+    let client = client_slot()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take();
+    if let Some(client) = client {
+        client.close().await;
+    }
+}
+
+async fn client_from_ctx(
     ctx: &xai_tool_runtime::ToolCallContext,
-) -> Result<PathBuf, xai_tool_runtime::ToolError> {
+) -> Result<Arc<CursorSdkClient>, xai_tool_runtime::ToolError> {
     let resources = shared_resources(ctx)?;
     let res = resources.lock().await;
-    Ok(res
+    if let Some(injected) = res.get::<CursorSdkClientResource>() {
+        return Ok(injected.0.clone());
+    }
+    let ws = res
         .get::<Cwd>()
         .map(|c| c.0.clone())
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))))
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    drop(res);
+    shared_client(ws)
 }
 
 pub const CURSOR_LIST_MODELS_TOOL_NAME: &str = "cursor_list_models";
@@ -104,8 +133,7 @@ impl xai_tool_runtime::Tool for CursorListModelsTool {
         ctx: xai_tool_runtime::ToolCallContext,
         _input: CursorListModelsInput,
     ) -> Result<CursorListModelsOutput, xai_tool_runtime::ToolError> {
-        let ws = workspace_from_ctx(&ctx).await?;
-        let client = process_client(ws)?;
+        let client = client_from_ctx(&ctx).await?;
         let models = client.list_models().await.map_err(|e| {
             xai_tool_runtime::ToolError::custom("cursor_list_models", e.to_string())
         })?;
@@ -196,12 +224,13 @@ impl xai_tool_runtime::Tool for CursorCreateAgentTool {
                 "model is required (from cursor_list_models)",
             ));
         }
-        let ws = workspace_from_ctx(&ctx).await?;
-        let client = process_client(ws)?;
+        let client = client_from_ctx(&ctx).await?;
         let created = client
             .create_local_agent(model, input.name)
             .await
-            .map_err(|e| xai_tool_runtime::ToolError::custom("cursor_create_agent", e.to_string()))?;
+            .map_err(|e| {
+                xai_tool_runtime::ToolError::custom("cursor_create_agent", e.to_string())
+            })?;
         Ok(CursorCreateAgentOutput {
             agent_id: created.agent_id,
             model: created.model,
@@ -238,8 +267,11 @@ impl ToolMetadata for CursorSendTool {
         ToolNamespace::Cursor
     }
     fn description_template(&self) -> &str {
-        "Send a prompt to an existing Cursor agent and wait for the run result. \
-         Use the same agent_id for multi-turn. Requires the SDK Bridge sidecar."
+        "Send a prompt to an existing Cursor agent and **block until that run \
+         finishes**. Returns the assistant text. Do not poll with \
+         cursor_list_agents, do not resend the same prompt, and do not \
+         'check if it is still running' — this call waits on Cursor. Use the \
+         same agent_id only for a *new* user turn after this returns."
     }
     fn requires_expr(&self) -> Expr<ToolRequirement> {
         Expr::True
@@ -289,8 +321,7 @@ impl xai_tool_runtime::Tool for CursorSendTool {
                 "message must not be blank",
             ));
         }
-        let ws = workspace_from_ctx(&ctx).await?;
-        let client = process_client(ws)?;
+        let client = client_from_ctx(&ctx).await?;
         let result = client
             .send(input.agent_id.trim(), input.message.trim())
             .await
@@ -372,8 +403,7 @@ impl xai_tool_runtime::Tool for CursorListAgentsTool {
         ctx: xai_tool_runtime::ToolCallContext,
         _input: CursorListAgentsInput,
     ) -> Result<CursorListAgentsOutput, xai_tool_runtime::ToolError> {
-        let ws = workspace_from_ctx(&ctx).await?;
-        let client = process_client(ws)?;
+        let client = client_from_ctx(&ctx).await?;
         let agents = client.list_agents().await.map_err(|e| {
             xai_tool_runtime::ToolError::custom("cursor_list_agents", e.to_string())
         })?;

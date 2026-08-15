@@ -166,6 +166,9 @@ async fn shutdown_workflows(session: &SessionActor) {
         }
         Err(_) => tracing::warn!("workflow shutdown persistence flush timed out"),
     }
+    if !session.startup_hints.is_subagent {
+        xai_grok_tools::implementations::cursor::close_shared_client().await;
+    }
 }
 pub(super) async fn run_session(
     session: Arc<SessionActor>,
@@ -1859,6 +1862,13 @@ pub(super) async fn run_session(
                                 let result = s.handle_rewrite_memory_note(&raw_text, &context_summary).await;
                                 let _ = respond_to.send(result);
                             });
+                        }
+                        SessionCommand::CursorProxyInbound {
+                            text,
+                            reply_to,
+                            from_name,
+                        } => {
+                            session.broadcast_cursor_proxy_inbound(&text, &reply_to, &from_name);
                         }
                         SessionCommand::Interject { text, id, images } => {
                             // Broadcast to every attached client so all panes

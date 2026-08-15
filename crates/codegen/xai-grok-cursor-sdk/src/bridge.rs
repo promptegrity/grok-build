@@ -85,6 +85,16 @@ impl Drop for BridgeHandle {
     }
 }
 
+impl Drop for BridgeManager {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.inner.try_lock()
+            && let Some(handle) = guard.take()
+        {
+            drop(handle);
+        }
+    }
+}
+
 /// Lazy one-bridge-per-process manager.
 pub struct BridgeManager {
     inner: Mutex<Option<Arc<BridgeHandle>>>,
@@ -106,7 +116,8 @@ impl BridgeManager {
         if let Some(existing) = guard.as_ref() {
             return Ok(existing.clone());
         }
-        let handle = Arc::new(spawn_bridge(&discover_bridge_bin()?, &self.workspace, &self.api_key).await?);
+        let handle =
+            Arc::new(spawn_bridge(&discover_bridge_bin()?, &self.workspace, &self.api_key).await?);
         *guard = Some(handle.clone());
         Ok(handle)
     }
@@ -135,6 +146,7 @@ pub async fn spawn_bridge(
         .kill_on_drop(true);
     xai_tty_utils::detach_command(&mut cmd);
 
+    #[allow(clippy::disallowed_methods)] // sidecar owned by BridgeHandle; killed on Drop/shutdown
     let mut child = cmd.spawn().map_err(|e| {
         CursorSdkError::Handshake(format!("failed to spawn {}: {e}", bin.display()))
     })?;
@@ -200,21 +212,54 @@ pub async fn spawn_bridge(
         .build()
         .map_err(CursorSdkError::from)?;
 
-    Ok(BridgeHandle {
+    let handle = BridgeHandle {
         url,
         bearer,
         child: Arc::new(Mutex::new(Some(child))),
         http,
-    })
+    };
+    if let Err(e) = verify_live_bridge(&handle).await {
+        let _ = handle.shutdown().await;
+        return Err(e);
+    }
+    Ok(handle)
+}
+
+/// Ping then GetVersion; require `protocol_version == "sdk.v1"`.
+async fn verify_live_bridge(handle: &BridgeHandle) -> Result<(), CursorSdkError> {
+    handle
+        .ping()
+        .await
+        .map_err(|e| CursorSdkError::Handshake(format!("Ping after spawn failed: {e}")))?;
+    let version = handle
+        .get_version()
+        .await
+        .map_err(|e| CursorSdkError::Handshake(format!("GetVersion after spawn failed: {e}")))?;
+    check_protocol_version(&version.protocol_version)
+}
+
+pub(crate) fn check_protocol_version(protocol_version: &str) -> Result<(), CursorSdkError> {
+    if protocol_version != "sdk.v1" {
+        return Err(CursorSdkError::Handshake(format!(
+            "unsupported protocol_version {protocol_version:?} (expected sdk.v1)"
+        )));
+    }
+    Ok(())
 }
 
 fn read_bearer(info: &ReadyInfo) -> Result<String, CursorSdkError> {
-    if let Some(token) = info.auth_token.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    if let Some(token) = info
+        .auth_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         return Ok(token.to_string());
     }
-    let path = info.auth_token_file.as_deref().ok_or_else(|| {
-        CursorSdkError::Handshake("ready line missing authTokenFile".into())
-    })?;
+    let path = info
+        .auth_token_file
+        .as_deref()
+        .ok_or_else(|| CursorSdkError::Handshake("ready line missing authTokenFile".into()))?;
     let raw = std::fs::read_to_string(path).map_err(|e| {
         CursorSdkError::Handshake(format!("failed to read auth token file {path}: {e}"))
     })?;
@@ -223,4 +268,22 @@ fn read_bearer(info: &ReadyInfo) -> Result<String, CursorSdkError> {
         return Err(CursorSdkError::Handshake("auth token file is empty".into()));
     }
     Ok(token.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check_protocol_version;
+
+    #[test]
+    fn protocol_version_sdk_v1_ok() {
+        check_protocol_version("sdk.v1").unwrap();
+    }
+
+    #[test]
+    fn protocol_version_rejects_other() {
+        let err = check_protocol_version("sdk.v2").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("sdk.v2"), "{msg}");
+        assert!(msg.contains("sdk.v1"), "{msg}");
+    }
 }

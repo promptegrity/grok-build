@@ -473,7 +473,10 @@ fn install_sh_sidecar_404_keeps_grok_and_requests_sidecar_url() {
         .env("FAKE_URL_LOG", &url_log)
         .status()
         .expect("spawn bash install.sh");
-    assert!(status.success(), "install.sh must succeed when sidecar 404s");
+    assert!(
+        status.success(),
+        "install.sh must succeed when sidecar 404s"
+    );
     assert_active_grok_runs(home.path());
 
     let urls = std::fs::read_to_string(&url_log).unwrap_or_default();

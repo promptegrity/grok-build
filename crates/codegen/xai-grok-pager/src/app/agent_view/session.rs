@@ -307,6 +307,8 @@ impl AgentView {
             plan_mode_active: false,
             plan_mode_pending: None,
             deferred_session_mode: None,
+            cursor_client: None,
+            cursor_proxy_queue: VecDeque::new(),
             pending_extensions_fetch: false,
             in_dashboard_overlay: false,
             overlay_can_cycle: false,

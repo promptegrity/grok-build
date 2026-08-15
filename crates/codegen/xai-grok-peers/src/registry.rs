@@ -25,6 +25,9 @@ pub struct PeerRecord {
     pub pid: u32,
     pub inbox_path: String,
     pub updated_at: DateTime<Utc>,
+    /// Optional status shown in `list_peers` / `/peers` (e.g. `cursor:composer-2`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 // -- Public API -------------------------------------------------------------
@@ -39,6 +42,11 @@ pub fn unregister(session_id: &str) -> io::Result<()> {
 
 pub fn update_name(session_id: &str, new_name: &str) -> io::Result<Option<PeerRecord>> {
     update_name_in(&xai_grok_config::grok_home(), session_id, new_name)
+}
+
+/// Set or clear the optional peer note (Cursor proxy tag, etc.).
+pub fn update_note(session_id: &str, note: Option<String>) -> io::Result<Option<PeerRecord>> {
+    update_note_in(&xai_grok_config::grok_home(), session_id, note)
 }
 
 pub fn list_live() -> io::Result<Vec<PeerRecord>> {
@@ -103,10 +111,31 @@ pub fn update_name_in(
     })
 }
 
+pub fn update_note_in(
+    root: &Path,
+    session_id: &str,
+    note: Option<String>,
+) -> io::Result<Option<PeerRecord>> {
+    with_locked_state(root, |peers| {
+        let Some(idx) = peers.iter().position(|p| p.session_id == session_id) else {
+            return None;
+        };
+        peers[idx].note = note.and_then(|s| {
+            let t = s.trim();
+            if t.is_empty() {
+                None
+            } else {
+                Some(t.to_string())
+            }
+        });
+        peers[idx].updated_at = Utc::now();
+        Some(peers[idx].clone())
+    })
+}
+
 pub fn list_live_in(root: &Path) -> io::Result<Vec<PeerRecord>> {
     with_locked_state(root, |peers| {
-        let (alive, _dead): (Vec<_>, Vec<_>) =
-            peers.drain(..).partition(|p| is_pid_alive(p.pid));
+        let (alive, _dead): (Vec<_>, Vec<_>) = peers.drain(..).partition(|p| is_pid_alive(p.pid));
         *peers = alive.clone();
         alive
     })
@@ -233,6 +262,7 @@ mod tests {
             pid: std::process::id(),
             inbox_path: format!("/tmp/{session_id}.sock"),
             updated_at: Utc::now(),
+            note: None,
         }
     }
 
@@ -263,5 +293,17 @@ mod tests {
         let _ = register_in(dir.path(), sample("s2", "other")).unwrap();
         let updated = update_name_in(dir.path(), "s2", "api").unwrap().unwrap();
         assert_eq!(updated.name, "api-2");
+    }
+
+    #[test]
+    fn update_note_roundtrip() {
+        let dir = tempdir().unwrap();
+        let _ = register_in(dir.path(), sample("s1", "api")).unwrap();
+        let updated = update_note_in(dir.path(), "s1", Some("cursor:composer-2".into()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated.note.as_deref(), Some("cursor:composer-2"));
+        let cleared = update_note_in(dir.path(), "s1", None).unwrap().unwrap();
+        assert_eq!(cleared.note, None);
     }
 }

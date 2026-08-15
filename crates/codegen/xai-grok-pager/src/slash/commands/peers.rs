@@ -52,12 +52,19 @@ impl SlashCommand for PeersCommand {
                         .chars()
                         .rev()
                         .collect();
+                    let note = peer
+                        .note
+                        .as_deref()
+                        .filter(|s| !s.is_empty())
+                        .map(|n| format!("\n    note: {n}"))
+                        .unwrap_or_default();
                     lines.push(format!(
-                        "  • {name}{marker}\n    cwd: {cwd}\n    id: …{short}",
+                        "  • {name}{marker}\n    cwd: {cwd}\n    id: …{short}{note}",
                         name = peer.name,
                         marker = marker,
                         cwd = peer.cwd,
                         short = short,
+                        note = note,
                     ));
                 }
                 lines.push(String::new());

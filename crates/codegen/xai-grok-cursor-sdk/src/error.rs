@@ -15,6 +15,7 @@ pub enum CursorSdkError {
         code: String,
         message: String,
         request_id: Option<String>,
+        sdk_error_code: Option<String>,
     },
     #[error(transparent)]
     Io(#[from] std::io::Error),

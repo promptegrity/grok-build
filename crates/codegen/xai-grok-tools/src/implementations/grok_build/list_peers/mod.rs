@@ -20,6 +20,8 @@ pub struct PeerInfo {
     pub session_id: String,
     pub cwd: String,
     pub short_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
@@ -46,7 +48,10 @@ impl ToolMetadata for ListPeersTool {
     fn description_template(&self) -> &str {
         "List other live Grok sessions on this machine that you can message with send_message. \
          Each peer has a name (set via --name or /rename), working directory, and session id. \
-         Use this before send_message when you need to discover which session to address."
+         A note such as cursor:<model> means that peer is a Cursor client and will forward \
+         your message to Cursor, then reply on its own. \
+         Use this before send_message when you need to discover which session to address. \
+         Do not poll list_peers to wait for a reply."
     }
 
     fn requires_expr(&self) -> Expr<ToolRequirement> {
@@ -127,6 +132,7 @@ impl xai_tool_runtime::Tool for ListPeersTool {
                 name: p.name,
                 session_id: p.session_id,
                 cwd: p.cwd,
+                note: p.note,
             })
             .collect();
 

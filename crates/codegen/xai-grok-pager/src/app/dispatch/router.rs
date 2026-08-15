@@ -907,10 +907,28 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
             }]
         }
         Action::NextModel => vec![],
+        Action::FetchCursorModels => super::cursor_client::dispatch_fetch_cursor_models(app),
+        Action::ActivateCursorClient {
+            model_id,
+            display_name,
+        } => super::cursor_client::dispatch_activate_cursor_client(app, model_id, display_name),
+        Action::CursorProxyInbound {
+            session_id,
+            text,
+            reply_to,
+            from_name,
+        } => super::cursor_client::dispatch_cursor_proxy_inbound(
+            app,
+            &session_id,
+            text,
+            reply_to,
+            from_name,
+        ),
         Action::SwitchModel { model_id, effort } => {
             let ActiveView::Agent(id) = app.active_view else {
                 return vec![];
             };
+            super::cursor_client::leave_cursor_client_if_active(app, id);
             let Some(agent) = app.agents.get_mut(&id) else {
                 return vec![];
             };

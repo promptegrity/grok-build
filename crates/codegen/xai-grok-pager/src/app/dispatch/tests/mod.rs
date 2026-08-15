@@ -2,6 +2,7 @@
 mod auth;
 mod billing;
 mod cta_e2e;
+mod cursor_client;
 mod dashboard;
 mod jump;
 mod modes;

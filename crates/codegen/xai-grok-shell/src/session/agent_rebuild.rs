@@ -409,6 +409,15 @@ impl AgentRebuildSpec {
                 .update_resource(UserQuestionSender(user_question_tx.clone()))
                 .await;
         }
+        {
+            use xai_grok_tools::implementations::cursor::{CursorSdkClientResource, shared_client};
+            if let Ok(client) = shared_client(working_directory.clone()) {
+                agent
+                    .tool_bridge()
+                    .update_resource(CursorSdkClientResource(client))
+                    .await;
+            }
+        }
         Ok(agent)
     }
 }

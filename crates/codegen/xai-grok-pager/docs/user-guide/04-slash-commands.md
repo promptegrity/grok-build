@@ -125,6 +125,17 @@ Switch models. Accepts a model ID or display name (case-insensitive), and for re
 /model Reasoning X high
 ```
 
+### `/model-cursor <name>`
+
+Turn this session into a **Cursor client**. Opens the Cursor model list (from your Cursor API key), creates a local Cursor agent, and forwards every subsequent prompt to that agent. Alias: `/cursor-model`.
+
+```
+/model-cursor composer-2
+/model-cursor Composer 2
+```
+
+`/model <grok-name>` leaves client mode and returns prompts to Grok. Requires `grok login-cursor` (or `CURSOR_API_KEY`). See [Cursor SDK Bridge](26-cursor-sdk-bridge.md).
+
 ### `/effort <level>`
 
 Set reasoning effort on the **current** model without reselecting it. Levels are `low`, `medium`, `high`, and `xhigh`, and it only applies when the active model supports reasoning effort.

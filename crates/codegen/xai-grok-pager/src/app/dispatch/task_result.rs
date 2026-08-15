@@ -576,6 +576,24 @@ pub(super) fn dispatch_task_result(result: TaskResult, app: &mut AppView) -> Vec
             result,
             prev_model_id,
         } => handle_switch_model_complete(app, agent_id, model_id, effort, result, prev_model_id),
+        TaskResult::CursorModelsLoaded { agent_id, result } => {
+            super::cursor_client::handle_cursor_models_loaded(app, agent_id, result)
+        }
+        TaskResult::CursorAgentCreated {
+            agent_id,
+            model_id,
+            display_name,
+            result,
+        } => super::cursor_client::handle_cursor_agent_created(
+            app,
+            agent_id,
+            model_id,
+            display_name,
+            result,
+        ),
+        TaskResult::CursorProxySendComplete { agent_id, result } => {
+            super::cursor_client::handle_cursor_proxy_send_complete(app, agent_id, result)
+        }
         TaskResult::BgTaskKilled {
             session_id,
             task_id,

@@ -41,7 +41,13 @@ pub enum InboxListenError {
 pub fn inbox_path_for_session(grok_home: &Path, session_id: &str) -> PathBuf {
     let safe: String = session_id
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     grok_home.join(PEERS_DIR).join(format!("{safe}.sock"))
 }
@@ -149,10 +155,12 @@ pub async fn read_envelope_line(
     reader.read_line(&mut line).await?;
     let trimmed = line.trim();
     if trimmed.is_empty() {
-        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "empty inbox line"));
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "empty inbox line",
+        ));
     }
-    serde_json::from_str(trimmed)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    serde_json::from_str(trimmed).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
 #[cfg(not(unix))]
@@ -164,7 +172,10 @@ pub async fn read_envelope_line<S>(_stream: S) -> Result<InboxEnvelope, io::Erro
 }
 
 /// Connect to `inbox_path` and write one JSON envelope line.
-pub async fn send_envelope(inbox_path: &Path, envelope: &InboxEnvelope) -> Result<(), InboxSendError> {
+pub async fn send_envelope(
+    inbox_path: &Path,
+    envelope: &InboxEnvelope,
+) -> Result<(), InboxSendError> {
     #[cfg(unix)]
     {
         use tokio::net::UnixStream;
@@ -209,10 +220,7 @@ pub async fn send_plain_message(
 
 /// Format an inbound peer message for injection into the receiving agent turn.
 pub fn format_inbound_prompt(env: &InboxEnvelope) -> String {
-    let reply = env
-        .reply_to
-        .as_deref()
-        .unwrap_or(env.from_name.as_str());
+    let reply = env.reply_to.as_deref().unwrap_or(env.from_name.as_str());
     format!(
         "[Peer message from `{from}` — reply with send_message to `{reply}`]\n\n{body}\n\n\
          This message came from another Grok session on this machine, not from the user. \
@@ -232,10 +240,7 @@ pub struct RepeatGuard {
 
 impl RepeatGuard {
     pub fn new(window: std::time::Duration) -> Self {
-        Self {
-            last: None,
-            window,
-        }
+        Self { last: None, window }
     }
 
     /// Returns true when `key` should be accepted (not a recent duplicate).

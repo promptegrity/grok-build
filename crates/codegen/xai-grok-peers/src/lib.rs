@@ -17,7 +17,7 @@ pub use inbox::{
 pub use naming::{allocate_live_name, default_name_from_cwd, sanitize_peer_name};
 pub use registry::{
     PeerRecord, list_live, list_live_in, register, register_in, unregister, unregister_in,
-    update_name, update_name_in,
+    update_name, update_name_in, update_note, update_note_in,
 };
 
 /// Directory name under grok home that holds peer JSON files and sockets.

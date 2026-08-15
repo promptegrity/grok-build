@@ -85,6 +85,8 @@ Permission boundaries stay per-session. The receiving Grok still prompts you for
 3. `send_message` connects to the target inbox and writes one JSON line.
 4. The receiver injects the text into the next agent turn (or mid-turn via interjection).
 
+If the receiving session is in [Cursor client mode](26-cursor-sdk-bridge.md) (`/model-cursor`), it does **not** start a Grok turn. It forwards the message body to the bound Cursor agent and, when Cursor finishes, sends the reply back to the original peer. `list_peers` / `/peers` show a `note` such as `cursor:composer-2` on that session.
+
 Same-machine delivery never leaves your machine.
 
 Containers that do not share `~/.grok` cannot see each other's peers.

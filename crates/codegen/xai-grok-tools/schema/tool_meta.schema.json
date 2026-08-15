@@ -48,6 +48,7 @@
         "grok_build_hashline",
         "codex",
         "opencode",
+        "cursor",
         "mcp"
       ]
     }

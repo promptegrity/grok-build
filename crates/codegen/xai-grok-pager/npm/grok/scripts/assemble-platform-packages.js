@@ -77,6 +77,25 @@ async function packPlatform({ platform, arch, envVar, defaultSource, binName }) 
         `${(raw.length / 1048576).toFixed(1)} MB -> ${(compressed.length / 1048576).toFixed(1)} MB ` +
         `(${path.relative(npmRoot, outBr)})`
     );
+
+    // Optional Cursor SDK Bridge sidecar. Missing is OK (win32-arm64 has no
+    // upstream binary; CI may not have fetched it yet).
+    const bridgeEnv = process.env[envVar.replace(/^GROK_/, 'CURSOR_SDK_BRIDGE_')];
+    const bridgeName = platform === 'win32' ? 'cursor-sdk-bridge.exe' : 'cursor-sdk-bridge';
+    if (bridgeEnv && fs.existsSync(bridgeEnv)) {
+        const outBridge = path.join(pkgDir, 'bin', `${bridgeName}.br`);
+        const rawBridge = fs.readFileSync(bridgeEnv);
+        const compressedBridge = await brotliCompress(rawBridge, {
+            params: { [zlib.constants.BROTLI_PARAM_QUALITY]: zlib.constants.BROTLI_MAX_QUALITY },
+        });
+        fs.writeFileSync(outBridge, compressedBridge);
+        console.log(
+            `[assemble] cursor-sdk-bridge ${platform}-${arch}: ` +
+            `${(rawBridge.length / 1048576).toFixed(1)} MB -> ${(compressedBridge.length / 1048576).toFixed(1)} MB`
+        );
+    } else {
+        console.log(`[assemble] cursor-sdk-bridge ${platform}-${arch}: skipped (set ${envVar.replace(/^GROK_/, 'CURSOR_SDK_BRIDGE_')})`);
+    }
     return true;
 }
 

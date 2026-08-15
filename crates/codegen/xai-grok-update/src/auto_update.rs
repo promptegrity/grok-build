@@ -1620,6 +1620,11 @@ async fn activate_verified_download(download: &VerifiedDownload) -> Result<()> {
     // Clean up old versioned binaries (keeps current + 1 previous).
     cleanup_old_downloads(&download_dir, "grok", &download.version).await;
     cleanup_old_downloads(&download_dir, "grok-pager", &download.version).await;
+    cleanup_old_downloads(&download_dir, "cursor-sdk-bridge", &download.version).await;
+
+    // Best-effort sidecar: same CDN object next to grok. 404 must not fail
+    // the grok update (older publishers / win-arm64 have no bridge).
+    install_cursor_sdk_bridge_sidecar(&download.version, &bin_dir, &download_dir).await;
 
     // Persist installer to config.toml so future runs auto-detect internal.
     let _ = config::update_config(|st| {
@@ -1632,6 +1637,65 @@ async fn activate_verified_download(download: &VerifiedDownload) -> Result<()> {
     regenerate_completions(&link_path, &grok_home).await;
 
     Ok(())
+}
+
+/// Download and link `cursor-sdk-bridge` next to `grok`. Failures are warnings.
+async fn install_cursor_sdk_bridge_sidecar(
+    version: &str,
+    bin_dir: &std::path::Path,
+    download_dir: &std::path::Path,
+) {
+    let Ok((os, arch)) = detect_platform() else {
+        return;
+    };
+    let platform = format!("{os}-{arch}");
+    let object = format!("cursor-sdk-bridge-{version}-{platform}");
+    let dest = download_dir.join(if cfg!(windows) {
+        format!("{object}.exe")
+    } else {
+        object.clone()
+    });
+    let mut downloaded = false;
+    for base in crate::version::cli_base_urls() {
+        match download_cli_artifact_from_gcs(&base, &object, &dest, false).await {
+            Ok(()) => {
+                downloaded = true;
+                break;
+            }
+            Err(e) => {
+                tracing::debug!(error = %e, base, "cursor-sdk-bridge sidecar not at this base");
+            }
+        }
+    }
+    if !downloaded {
+        eprintln!(
+            "  Warning: cursor-sdk-bridge sidecar not published for {platform}; Cursor tools need CURSOR_SDK_BRIDGE_BIN or a later update."
+        );
+        return;
+    }
+
+    let link_name = if cfg!(windows) {
+        "cursor-sdk-bridge.exe"
+    } else {
+        "cursor-sdk-bridge"
+    };
+    let link_path = bin_dir.join(link_name);
+    #[cfg(unix)]
+    {
+        let rel = relative_symlink_target(&dest, &link_path);
+        if let Err(e) = atomic_symlink_swap(&rel, &link_path).await {
+            tracing::warn!("failed to link cursor-sdk-bridge: {e:#}");
+            return;
+        }
+    }
+    #[cfg(windows)]
+    {
+        if let Err(e) = windows_replace_exe(&dest, &link_path).await {
+            tracing::warn!("failed to install cursor-sdk-bridge.exe: {e:#}");
+            return;
+        }
+    }
+    eprintln!("  Sidecar linked to {}.", link_path.display());
 }
 
 /// Regenerate shell completions after a binary update (best-effort).

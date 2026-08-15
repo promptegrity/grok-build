@@ -272,6 +272,7 @@ mod tests {
                 ToolNamespace::GrokBuildHashline => ("grok_build_hashline", "GrokBuildHashline"),
                 ToolNamespace::Codex => ("codex", "Codex"),
                 ToolNamespace::OpenCode => ("opencode", "OpenCode"),
+                ToolNamespace::Cursor => ("cursor", "Cursor"),
                 ToolNamespace::MCP => ("mcp", "MCP"),
             }
         }

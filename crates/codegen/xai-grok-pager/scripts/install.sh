@@ -279,6 +279,43 @@ else
     echo "  Binary linked to $BIN_DIR/grok and $BIN_DIR/agent." >&2
 fi
 
+# Optional Cursor SDK Bridge sidecar (same CDN, same Grok version). A missing
+# artifact must not fail the grok install — older publishers or win-arm64
+# have no sidecar.
+install_cursor_sdk_bridge_sidecar() {
+    local sidecar_name="cursor-sdk-bridge-${version}-${platform}"
+    local sidecar_path="$DOWNLOAD_DIR/$sidecar_name"
+    local sidecar_tmp="${sidecar_path}.tmp.$$"
+    local sidecar_url="${BASE_URL}/${sidecar_name}"
+    if [ "$os" = "windows" ]; then
+        sidecar_path="${sidecar_path}.exe"
+        sidecar_tmp="${sidecar_tmp}.exe"
+        sidecar_url="${sidecar_url}.exe"
+    fi
+    echo "  Downloading cursor-sdk-bridge sidecar..." >&2
+    if ! download_file "$sidecar_url" "$sidecar_tmp"; then
+        rm -f "$sidecar_tmp" 2>/dev/null || true
+        echo "  Warning: cursor-sdk-bridge sidecar not published for $platform; Cursor tools need CURSOR_SDK_BRIDGE_BIN or a later install." >&2
+        return 0
+    fi
+    if [ "$os" = "windows" ]; then
+        mv -f "$sidecar_tmp" "$sidecar_path"
+        if ! cp -f "$sidecar_path" "$BIN_DIR/cursor-sdk-bridge.exe" 2>/dev/null; then
+            echo "  Warning: failed to install cursor-sdk-bridge.exe" >&2
+        fi
+    else
+        chmod +x "$sidecar_tmp"
+        mv -f "$sidecar_tmp" "$sidecar_path"
+        if [ "$(dirname "$BIN_DIR")" = "$(dirname "$DOWNLOAD_DIR")" ]; then
+            ln -sf "../$(basename "$DOWNLOAD_DIR")/$(basename "$sidecar_path")" "$BIN_DIR/cursor-sdk-bridge"
+        else
+            ln -sf "$sidecar_path" "$BIN_DIR/cursor-sdk-bridge"
+        fi
+        echo "  Sidecar linked to $BIN_DIR/cursor-sdk-bridge." >&2
+    fi
+}
+install_cursor_sdk_bridge_sidecar
+
 # Generate shell completions (best-effort)
 mkdir -p "$HOME/.grok/completions/bash" "$HOME/.grok/completions/zsh"
 "$BIN_DIR/grok" completions bash > "$HOME/.grok/completions/bash/grok.bash" 2>/dev/null || true

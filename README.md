@@ -17,6 +17,7 @@ headlessly for scripting/CI, or embedded in editors via the Agent Client
 Protocol (ACP).
 
 [Installing the released binary](#installing-the-released-binary) ·
+[Features](#features) ·
 [Building from source](#building-from-source) ·
 [Documentation](#documentation) ·
 [Repository layout](#repository-layout) ·
@@ -50,6 +51,57 @@ grok --version
 
 See the [changelog](https://x.ai/build/changelog) for the latest fixes,
 features, and improvements in each release.
+
+## Features
+
+The TUI is a full coding agent: it reads and edits the repo, runs shell
+commands, searches the web, talks to MCP servers, and can run headless or
+over ACP. This tree also adds:
+
+### Cursor client (`/model-cursor`)
+
+A Grok session can become a **thin client of a local Cursor agent**. After
+[`grok login-cursor`](crates/codegen/xai-grok-pager/docs/user-guide/02-authentication.md#cursor-api-key-sdk-bridge)
+(Cursor API key, billed on your Cursor account — never reuse `XAI_API_KEY`):
+
+```sh
+grok --name cursor
+# then in the prompt:
+/model-cursor
+```
+
+Pick a Cursor model (or `/model-cursor composer-2`). Every later prompt in
+that session is forwarded to Cursor; the Grok model is not in the loop.
+`/model <grok-name>` or `/new` leaves client mode. The status bar shows
+`Cursor · {model}` while it is active.
+
+`cursor_*` tools remain on a normal Grok coder as an advanced path
+(`cursor_list_models` → `cursor_create_agent` → `cursor_send`).
+
+See the [Cursor SDK Bridge](crates/codegen/xai-grok-pager/docs/user-guide/26-cursor-sdk-bridge.md)
+guide.
+
+### Cross-session messaging
+
+Independent `grok` processes on the same machine can discover each other and
+exchange plain text:
+
+```sh
+# terminal 1 — normal Grok coder
+grok --name coder
+
+# terminal 2 — Cursor client
+grok --name cursor
+# /model-cursor …
+
+# in the coder session: /peers, or ask Grok to send_message to `cursor`
+```
+
+Name sessions with `--name` / `-n` (or `/rename`). `/peers` lists live
+sessions. A Cursor-client peer forwards inbound messages to Cursor and
+replies on its own; `list_peers` shows a note such as `cursor:composer-2`.
+
+See [Cross-Session Messaging](crates/codegen/xai-grok-pager/docs/user-guide/25-cross-session-messaging.md).
 
 ## Building from source
 
@@ -90,7 +142,10 @@ Full online documentation is available at
 The user guide ships with the pager crate:
 [`crates/codegen/xai-grok-pager/docs/user-guide/`](crates/codegen/xai-grok-pager/docs/user-guide/)
 — getting started, keyboard shortcuts, slash commands, configuration, theming,
-MCP servers, skills, plugins, hooks, headless mode, sandboxing, and more.
+MCP servers, skills, plugins, hooks, headless mode, sandboxing,
+[cross-session messaging](crates/codegen/xai-grok-pager/docs/user-guide/25-cross-session-messaging.md),
+[Cursor client mode](crates/codegen/xai-grok-pager/docs/user-guide/26-cursor-sdk-bridge.md),
+and more.
 
 ## Repository layout
 
@@ -99,7 +154,9 @@ MCP servers, skills, plugins, hooks, headless mode, sandboxing, and more.
 | `crates/codegen/xai-grok-pager-bin` | Composition-root package; builds the `xai-grok-pager` binary |
 | `crates/codegen/xai-grok-pager` | The TUI: scrollback, prompt, modals, rendering |
 | `crates/codegen/xai-grok-shell` | Agent runtime + leader/stdio/headless entry points |
-| `crates/codegen/xai-grok-tools` | Tool implementations (terminal, file edit, search, ...) |
+| `crates/codegen/xai-grok-tools` | Tool implementations (terminal, file edit, search, Cursor SDK, peers, ...) |
+| `crates/codegen/xai-grok-cursor-sdk` | Connect client for the `cursor-sdk-bridge` sidecar |
+| `crates/codegen/xai-grok-peers` | Same-machine peer registry and inbox sockets |
 | `crates/codegen/xai-grok-workspace` | Host filesystem, VCS, execution, checkpoints |
 | `crates/codegen/...` | The rest of the CLI crate closure (config, MCP, markdown, sandbox, ...) |
 | `crates/common/`, `crates/build/`, `prod/mc/` | Small shared leaf crates pulled in by the closure |

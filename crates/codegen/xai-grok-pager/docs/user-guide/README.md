@@ -52,5 +52,5 @@ Automate, script, and integrate Grok Build with other systems.
 | 22 | [Permissions and Safety](22-permissions-and-safety.md) | Modes (always-approve, auto, ask), rules, matching, hooks, and examples |
 | 23 | [Agent Dashboard](23-dashboard.md) | Central overview of local sessions and forks |
 | 24 | [Monitoring Usage (External OpenTelemetry)](24-monitoring-usage.md) | Customer OTEL export |
-| 26 | [Cursor SDK Bridge](26-cursor-sdk-bridge.md) | Drive local Cursor agents from Grok (`login-cursor`, sidecar) |
 | 25 | [Cross-Session Messaging](25-cross-session-messaging.md) | Message other live `grok` sessions on this machine (`--name`, `/peers`) |
+| 26 | [Cursor SDK Bridge](26-cursor-sdk-bridge.md) | `/model-cursor` client mode, `login-cursor`, and `cursor_*` tools |

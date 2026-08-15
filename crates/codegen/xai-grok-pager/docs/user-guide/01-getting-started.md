@@ -151,7 +151,9 @@ Tools can be extended with [MCP servers](05-configuration.md#mcp-servers) for in
 Type `/` in the prompt to access commands. These provide quick actions without writing a full prompt:
 
 ```
-/model grok-build                 # Switch model
+/model grok-build                 # Switch Grok / xAI model
+/model-cursor                     # Bind this session to a local Cursor agent
+/peers                            # List other live Grok sessions on this machine
 /compact                          # Compress conversation history
 /always-approve                   # Toggle always-approve mode
 /new                              # Start a new session
@@ -178,6 +180,9 @@ grok -w --ref main "implement feature from main"
 
 # Start in a specific project directory
 grok --cwd ~/projects/my-app
+
+# Name this session so other grok processes can message it (/peers)
+grok --name coder
 
 # Add project-specific rules
 grok --rules "Always use TypeScript. Prefer functional components."
@@ -249,7 +254,9 @@ Deeper files take precedence. Grok also reads `CLAUDE.md` files for compatibilit
 
 | Document | What You Will Learn |
 |----------|-------------------|
-| [Authentication](02-authentication.md) | Browser login, API keys, OIDC, external auth, device code flow |
+| [Authentication](02-authentication.md) | Browser login, API keys, OIDC, Cursor (`login-cursor`), device code flow |
 | [Keyboard Shortcuts](03-keyboard-shortcuts.md) | Complete reference for all key bindings |
-| [Slash Commands](04-slash-commands.md) | All available `/` commands |
+| [Slash Commands](04-slash-commands.md) | All available `/` commands, including `/model-cursor` and `/peers` |
 | [Configuration](05-configuration.md) | config.toml, pager.toml, environment variables |
+| [Cross-Session Messaging](25-cross-session-messaging.md) | Name sessions and send messages between live `grok` processes |
+| [Cursor SDK Bridge](26-cursor-sdk-bridge.md) | `/model-cursor` client mode and `cursor_*` tools |

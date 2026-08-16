@@ -1772,9 +1772,12 @@ pub(crate) fn execute(
             cwd,
             model_id,
             display_name,
+            session_id,
+            peer_name,
+            plan_mode,
         } => {
             tasks.spawn(async move {
-                let result = create_cursor_agent(cwd, &model_id).await;
+                let result = create_cursor_agent(cwd, &model_id, session_id, peer_name, plan_mode).await;
                 TaskResult::CursorAgentCreated {
                     agent_id,
                     model_id,
@@ -1803,6 +1806,7 @@ pub(crate) fn execute(
             reply_to,
             from_name,
             from_session_id,
+            plan_mode,
         } => {
             let ptx = progress_tx.clone();
             tasks.spawn(async move {
@@ -1813,6 +1817,7 @@ pub(crate) fn execute(
                     reply_to.as_deref(),
                     &from_name,
                     &from_session_id,
+                    plan_mode,
                     |event| {
                         let _ = ptx.send(RestoreProgressMsg::Cursor { agent_id, event });
                     },
@@ -4799,11 +4804,32 @@ async fn fetch_cursor_models(
         .collect())
 }
 
-async fn create_cursor_agent(cwd: PathBuf, model_id: &str) -> Result<String, String> {
+async fn create_cursor_agent(
+    cwd: PathBuf,
+    model_id: &str,
+    session_id: String,
+    peer_name: String,
+    plan_mode: bool,
+) -> Result<String, String> {
     let client = xai_grok_tools::implementations::cursor::shared_client(cwd)
         .map_err(|e| e.to_string())?;
+    let grok_bin = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.to_str().map(str::to_string))
+        .unwrap_or_else(|| "grok".into());
     let created = client
-        .create_local_agent(model_id, Some("grok-cursor-client".into()))
+        .create_local_agent_with(
+            model_id,
+            Some("grok-cursor-client".into()),
+            xai_grok_cursor_sdk::CreateLocalAgentOptions {
+                plan_mode,
+                peers_mcp: Some(xai_grok_cursor_sdk::PeersMcpIdentity {
+                    grok_bin,
+                    session_id,
+                    peer_name,
+                }),
+            },
+        )
         .await
         .map_err(|e| e.to_string())?;
     xai_grok_tools::implementations::cursor::remember_client_agent(&created.agent_id);
@@ -4826,12 +4852,14 @@ async fn cursor_proxy_send(
     reply_to: Option<&str>,
     from_name: &str,
     from_session_id: &str,
+    plan_mode: bool,
     mut on_progress: impl FnMut(crate::cursor_client::CursorProxyProgress),
 ) -> Result<String, String> {
+    let started_ms = xai_grok_peers::unix_now_ms();
     let client = xai_grok_tools::implementations::cursor::shared_client(cwd)
         .map_err(|e| e.to_string())?;
     let sent = client
-        .send_with_progress(cursor_agent_id, text, |event| {
+        .send_with_progress(cursor_agent_id, text, plan_mode, |event| {
             let mapped = match event.kind {
                 xai_grok_cursor_sdk::CursorRunEventKind::Status => {
                     crate::cursor_client::CursorProxyProgress::Status(event.text)
@@ -4849,21 +4877,24 @@ async fn cursor_proxy_send(
     } else {
         sent.text
     };
-    if let Some(target) = reply_to.filter(|s| !s.is_empty())
-        && !reply.trim().is_empty()
-        && let Ok(live) = xai_grok_peers::list_live()
-        && let Some(peer) = live
-            .iter()
-            .find(|p| p.name == target || p.session_id == target)
-    {
-        let _ = xai_grok_peers::send_plain_message(
-            std::path::Path::new(&peer.inbox_path),
-            from_name,
-            from_session_id,
-            &reply,
-            Some(from_name),
-        )
-        .await;
+    if let Some(target) = reply_to.filter(|s| !s.is_empty()) {
+        let stamp_matched =
+            xai_grok_peers::consume_last_send_if_matches(from_session_id, target, started_ms);
+        if xai_grok_peers::should_fallback_relay(Some(target), &reply, stamp_matched)
+            && let Ok(live) = xai_grok_peers::list_live()
+            && let Some(peer) = live
+                .iter()
+                .find(|p| p.name == target || p.session_id == target)
+        {
+            let _ = xai_grok_peers::send_plain_message(
+                std::path::Path::new(&peer.inbox_path),
+                from_name,
+                from_session_id,
+                &reply,
+                Some(from_name),
+            )
+            .await;
+        }
     }
     if reply.trim().is_empty() {
         if let Some(err) = sent.error {

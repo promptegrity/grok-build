@@ -5,10 +5,11 @@ use crate::auth::resolve_cursor_api_key;
 use crate::bridge::{BridgeHandle, BridgeManager};
 use crate::error::CursorSdkError;
 use crate::pb::{
-    AgentOperationOptions, AgentOptions, CreateAgentRequest, CursorRequestOptions,
+    AgentModeOption, AgentOperationOptions, AgentOptions, CreateAgentRequest, CursorRequestOptions,
     DeleteAgentRequest, GetRunOptions, GetRunRequest, ListAgentsOptions, ListAgentsRequest,
-    ListModelsRequest, LocalAgentOptions, ModelSelection, RunLifecycleStatus, RunStreamMessage,
-    SendRequest, UserMessage, WaitLiveRunRequest, run_stream_message,
+    ListModelsRequest, LocalAgentOptions, McpServerConfig, ModelSelection, RunLifecycleStatus,
+    RunStreamMessage, SendOptions, SendRequest, StdioMcpServerConfig, UserMessage,
+    WaitLiveRunRequest, mcp_server_config, run_stream_message,
 };
 use crate::transport;
 
@@ -66,6 +67,16 @@ impl CursorSdkClient {
         model: &str,
         name: Option<String>,
     ) -> Result<CreateAgentResult, CursorSdkError> {
+        self.create_local_agent_with(model, name, CreateLocalAgentOptions::default())
+            .await
+    }
+
+    pub async fn create_local_agent_with(
+        &self,
+        model: &str,
+        name: Option<String>,
+        options: CreateLocalAgentOptions,
+    ) -> Result<CreateAgentResult, CursorSdkError> {
         let handle = self.handle().await?;
         let cwd = self
             .workspace
@@ -90,6 +101,8 @@ impl CursorSdkClient {
                         cwd: vec![cwd],
                         ..Default::default()
                     }),
+                    mcp_servers: peers_mcp_servers(&options.peers_mcp),
+                    mode: agent_mode_i32(options.plan_mode),
                     ..Default::default()
                 }),
                 idempotency_key: None,
@@ -103,7 +116,7 @@ impl CursorSdkClient {
     }
 
     pub async fn send(&self, agent_id: &str, text: &str) -> Result<SendResult, CursorSdkError> {
-        self.send_with_progress(agent_id, text, |_| {}).await
+        self.send_with_progress(agent_id, text, false, |_| {}).await
     }
 
     /// Send a prompt and report stream events as they arrive (status / steps / text).
@@ -111,6 +124,7 @@ impl CursorSdkClient {
         &self,
         agent_id: &str,
         text: &str,
+        plan_mode: bool,
         mut on_event: impl FnMut(CursorRunEvent),
     ) -> Result<SendResult, CursorSdkError> {
         let handle = self.handle().await?;
@@ -126,7 +140,10 @@ impl CursorSdkClient {
                     text: text.to_string(),
                     images: Vec::new(),
                 }),
-                options: None,
+                options: Some(SendOptions {
+                    mode: agent_mode_i32(plan_mode),
+                    ..Default::default()
+                }),
                 idempotency_key: None,
             },
             |msg| {
@@ -299,6 +316,53 @@ impl CursorSdkClient {
             })
             .collect())
     }
+}
+
+/// Optional extras when creating a local Cursor agent for `/model-cursor`.
+#[derive(Debug, Clone, Default)]
+pub struct CreateLocalAgentOptions {
+    pub plan_mode: bool,
+    pub peers_mcp: Option<PeersMcpIdentity>,
+}
+
+/// Seat identity passed into the `grok peers-mcp` stdio server.
+#[derive(Debug, Clone)]
+pub struct PeersMcpIdentity {
+    pub grok_bin: String,
+    pub session_id: String,
+    pub peer_name: String,
+}
+
+pub fn agent_mode_i32(plan_mode: bool) -> i32 {
+    if plan_mode {
+        AgentModeOption::Plan as i32
+    } else {
+        AgentModeOption::Agent as i32
+    }
+}
+
+pub fn peers_mcp_servers(
+    identity: &Option<PeersMcpIdentity>,
+) -> std::collections::HashMap<String, McpServerConfig> {
+    let Some(id) = identity else {
+        return std::collections::HashMap::new();
+    };
+    let mut env = std::collections::HashMap::new();
+    env.insert("GROK_PEER_SESSION_ID".to_string(), id.session_id.clone());
+    env.insert("GROK_PEER_NAME".to_string(), id.peer_name.clone());
+    let mut servers = std::collections::HashMap::new();
+    servers.insert(
+        "grok-peers".to_string(),
+        McpServerConfig {
+            config: Some(mcp_server_config::Config::Stdio(StdioMcpServerConfig {
+                command: id.grok_bin.clone(),
+                args: vec!["peers-mcp".into()],
+                env,
+                cwd: String::new(),
+            })),
+        },
+    );
+    servers
 }
 
 #[derive(Debug, Clone)]
@@ -553,5 +617,37 @@ mod tests {
         let event = run_event(&messages[0]).expect("assistant event");
         assert_eq!(event.kind, CursorRunEventKind::Assistant);
         assert_eq!(event.text, "hi");
+    }
+
+    #[test]
+    fn agent_mode_maps_plan_flag() {
+        assert_eq!(agent_mode_i32(true), AgentModeOption::Plan as i32);
+        assert_eq!(agent_mode_i32(false), AgentModeOption::Agent as i32);
+    }
+
+    #[test]
+    fn peers_mcp_stdio_config() {
+        let servers = peers_mcp_servers(&Some(PeersMcpIdentity {
+            grok_bin: "/usr/bin/grok".into(),
+            session_id: "sess".into(),
+            peer_name: "cursor".into(),
+        }));
+        let cfg = servers.get("grok-peers").expect("grok-peers server");
+        match &cfg.config {
+            Some(mcp_server_config::Config::Stdio(stdio)) => {
+                assert_eq!(stdio.command, "/usr/bin/grok");
+                assert_eq!(stdio.args, vec!["peers-mcp"]);
+                assert_eq!(
+                    stdio.env.get("GROK_PEER_SESSION_ID").map(String::as_str),
+                    Some("sess")
+                );
+                assert_eq!(
+                    stdio.env.get("GROK_PEER_NAME").map(String::as_str),
+                    Some("cursor")
+                );
+            }
+            other => panic!("expected stdio config, got {other:?}"),
+        }
+        assert!(peers_mcp_servers(&None).is_empty());
     }
 }

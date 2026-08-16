@@ -127,7 +127,7 @@ Switch models. Accepts a model ID or display name (case-insensitive), and for re
 
 ### `/model-cursor <name>`
 
-Turn this session into a **Cursor client**. Opens the Cursor model list (from your Cursor API key), creates a local Cursor agent, and forwards every subsequent prompt to that agent. Alias: `/cursor-model`.
+Turn this session into a **Cursor client** (TUI for a local Cursor agent). Opens the Cursor model list (from your Cursor API key), creates the agent with a `grok-peers` MCP, and forwards every subsequent prompt (and `/plan`) to that agent. Alias: `/cursor-model`.
 
 ```
 /model-cursor composer-2

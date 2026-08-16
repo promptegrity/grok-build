@@ -31,6 +31,9 @@ pub enum Command {
     /// Remove the stored Cursor API key
     #[command(name = "logout-cursor")]
     LogoutCursor,
+    /// Stdio MCP server: list_peers / send_message (used by /model-cursor)
+    #[command(name = "peers-mcp", hide = true)]
+    PeersMcp,
     /// Sign in to Grok
     Login {
         /// Ignored (kept for backwards compatibility). OAuth2 is now the only auth method.
@@ -1441,6 +1444,11 @@ mod tests {
     fn logout_cursor_parses() {
         let args = PagerArgs::try_parse_from(["grok", "logout-cursor"]).expect("logout-cursor");
         assert!(matches!(args.command, Some(Command::LogoutCursor)));
+    }
+    #[test]
+    fn peers_mcp_parses() {
+        let args = PagerArgs::try_parse_from(["grok", "peers-mcp"]).expect("peers-mcp");
+        assert!(matches!(args.command, Some(Command::PeersMcp)));
     }
     #[test]
     fn positional_prompt_conflicts_with_headless_single() {

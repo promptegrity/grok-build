@@ -197,9 +197,53 @@ fn peer_inbound_forwards_when_client_active() {
                 text,
                 reply_to: Some(reply),
                 ..
-            }] if text == "from t1" && reply == "api"
+            }] if text.contains("from t1")
+                && text.contains("send_message")
+                && text.contains("`api`")
+                && reply == "api"
         ),
-        "expected proxy send with reply_to, got {effects:?}"
+        "expected framed proxy send with reply_to, got {effects:?}"
+    );
+}
+
+#[test]
+fn activate_cursor_client_forwards_plan_mode() {
+    let mut app = test_app_with_agent();
+    app.agents.get_mut(&AgentId(0)).unwrap().plan_mode_active = true;
+    let effects = dispatch(
+        Action::ActivateCursorClient {
+            model_id: "composer-2".into(),
+            display_name: "Composer 2".into(),
+        },
+        &mut app,
+    );
+    assert!(
+        effects.iter().any(|e| matches!(
+            e,
+            Effect::CreateCursorAgent {
+                plan_mode: true,
+                ..
+            }
+        )),
+        "plan mode on the seat must be passed to CreateCursorAgent, got {effects:?}"
+    );
+}
+
+#[test]
+fn send_prompt_forwards_plan_mode() {
+    let mut app = test_app_with_agent();
+    enter_cursor_client(&mut app);
+    app.agents.get_mut(&AgentId(0)).unwrap().plan_mode_active = true;
+    let effects = dispatch(Action::SendPrompt("plan this".into()), &mut app);
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [Effect::CursorProxySend {
+                plan_mode: true,
+                ..
+            }]
+        ),
+        "expected plan_mode on CursorProxySend, got {effects:?}"
     );
 }
 

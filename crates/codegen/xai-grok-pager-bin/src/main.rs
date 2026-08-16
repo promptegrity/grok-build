@@ -2150,6 +2150,11 @@ async fn async_main(args: PagerArgs) -> Result<()> {
                 xai_grok_shell::auth::run_cli_logout_cursor()?;
                 xai_grok_shell::instrumentation::finalize_and_exit(0);
             }
+            Command::PeersMcp => {
+                init_tracing_simple("cli");
+                xai_grok_pager::peers_mcp_cmd::run().await?;
+                return Ok(());
+            }
             Command::Wrap(ref wrap_args) => {
                 return xai_grok_pager::wrap_cmd::run(wrap_args);
             }

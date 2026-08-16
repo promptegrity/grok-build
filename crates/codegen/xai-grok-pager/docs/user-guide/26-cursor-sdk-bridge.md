@@ -61,10 +61,11 @@ In a second terminal (after `grok login-cursor`):
 /model-cursor
 ```
 
-Pick a Cursor model from the dropdown (or type `/model-cursor composer-2`). Grok creates a local Cursor agent in the current workspace. After that:
+Pick a Cursor model from the dropdown (or type `/model-cursor composer-2`). Grok creates a local Cursor agent in the current workspace and attaches a `grok-peers` MCP (`list_peers` / `send_message`) under this session's peer name. After that:
 
-- Each prompt you type is sent to Cursor and the session waits for the reply. The Grok model is not in the loop. While Cursor works, Grok 2 shows a spinner with the current step and streams the reply as it arrives.
-- Peer messages from another Grok session are forwarded the same way. When Cursor finishes, this session replies to the sender automatically.
+- Each prompt you type is sent to Cursor and the session waits for the reply. The Grok model is not in the loop. While Cursor works, this TUI shows a spinner with the current step and streams the reply as it arrives.
+- `/plan` (or Shift+Tab) on this session puts Cursor in its native plan mode for the next send. This is Cursor's plan mode, not Grok's `plan.md` approval overlay.
+- Peer messages from another Grok session are forwarded the same way. Cursor should reply with `send_message` to the named peer. This session does not send a second reply of its own (one fallback relay only if Cursor never called `send_message`).
 - `/model <grok-name>`, `/new` (`/clear`), `/home`, or `/quit` (`/exit`) leaves client mode and **deletes** the Cursor agent created for this session.
 
 The status bar shows `Cursor · {model}` while the mode is active.
@@ -72,8 +73,8 @@ The status bar shows `Cursor · {model}` while the mode is active.
 Typical two-terminal setup:
 
 1. Terminal 1: `grok --name coder` — normal Grok coding agent.
-2. Terminal 2: `grok --name cursor` then `/model-cursor` — Cursor client/proxy.
-3. In terminal 1, ask Grok to message the peer named `cursor`. That session forwards to Cursor and sends the answer back.
+2. Terminal 2: `grok --name cursor` then `/model-cursor` — Cursor seat (this TUI).
+3. In terminal 1, ask Grok to message the peer named `cursor`. Cursor sees the message and replies with `send_message`.
 
 Cancel (Esc) does not stop an in-flight Cursor run in this version.
 

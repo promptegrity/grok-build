@@ -40,12 +40,24 @@ pub(super) fn dispatch_activate_cursor_client(
         return vec![];
     }
     let cwd = agent.session.cwd.clone();
+    let session_id = agent
+        .session
+        .session_id
+        .as_ref()
+        .map(|s| s.0.to_string())
+        .unwrap_or_default();
+    let peer_name =
+        xai_grok_shell::peers::live_name(&session_id).unwrap_or_else(|| "cursor".to_string());
+    let plan_mode = agent.plan_mode_pending.unwrap_or(agent.plan_mode_active);
     let mut effects = cursor_client::clear_cursor_client_on_agent(agent);
     effects.push(Effect::CreateCursorAgent {
         agent_id: id,
         cwd,
         model_id,
         display_name,
+        session_id,
+        peer_name,
+        plan_mode,
     });
     effects
 }
@@ -67,7 +79,13 @@ pub(super) fn dispatch_cursor_proxy_inbound(
         Some(from) => format!("[from {from}]\n{text}"),
         None => text.clone(),
     };
-    cursor_client::enqueue_or_send(agent, text, reply_to, Some(display))
+    let framed = xai_grok_peers::format_inbound_prompt(&xai_grok_peers::InboxEnvelope {
+        from_name: from_name.clone().unwrap_or_default(),
+        from_session_id: String::new(),
+        message: text,
+        reply_to: reply_to.clone(),
+    });
+    cursor_client::enqueue_or_send(agent, framed, reply_to, Some(display))
 }
 
 pub(super) fn handle_cursor_models_loaded(

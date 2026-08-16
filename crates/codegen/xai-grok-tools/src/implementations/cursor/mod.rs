@@ -266,8 +266,37 @@ impl xai_tool_runtime::Tool for CursorCreateAgentTool {
             ));
         }
         let client = client_from_ctx(&ctx).await?;
+        let session_id = {
+            let resources = shared_resources(&ctx)?;
+            let res = resources.lock().await;
+            res.get::<crate::implementations::grok_build::task::types::SessionIdResource>()
+                .map(|r| r.0.clone())
+                .unwrap_or_default()
+        };
+        let peer_name = input
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("cursor")
+            .to_string();
+        let grok_bin = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.to_str().map(str::to_string))
+            .unwrap_or_else(|| "grok".into());
         let created = client
-            .create_local_agent(model, input.name)
+            .create_local_agent_with(
+                model,
+                input.name,
+                xai_grok_cursor_sdk::CreateLocalAgentOptions {
+                    plan_mode: false,
+                    peers_mcp: Some(xai_grok_cursor_sdk::PeersMcpIdentity {
+                        grok_bin,
+                        session_id,
+                        peer_name,
+                    }),
+                },
+            )
             .await
             .map_err(|e| {
                 xai_tool_runtime::ToolError::custom("cursor_create_agent", e.to_string())

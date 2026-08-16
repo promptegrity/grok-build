@@ -275,6 +275,7 @@ pub fn cursor_proxy_send_effect(
         .unwrap_or_default();
     let from_name =
         xai_grok_shell::peers::live_name(&session_id).unwrap_or_else(|| "cursor-proxy".to_string());
+    let plan_mode = agent.plan_mode_pending.unwrap_or(agent.plan_mode_active);
     Effect::CursorProxySend {
         agent_id: agent.session.id,
         cwd: agent.session.cwd.clone(),
@@ -283,6 +284,7 @@ pub fn cursor_proxy_send_effect(
         reply_to,
         from_name,
         from_session_id: session_id,
+        plan_mode,
     }
 }
 
@@ -339,7 +341,8 @@ pub fn activate_on_agent(
     agent
         .scrollback
         .push_block(crate::scrollback::block::RenderBlock::system(format!(
-            "Cursor client mode: {display_name}. Prompts (and peer messages) go to Cursor. \
+            "Cursor client mode: {display_name}. This session is a TUI for Cursor \
+             (prompts, /plan, and peer inbox). Cursor replies with send_message. \
              /model <grok> returns to Grok."
         )));
 }

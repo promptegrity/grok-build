@@ -1634,6 +1634,9 @@ pub enum Effect {
         cwd: std::path::PathBuf,
         model_id: String,
         display_name: String,
+        session_id: String,
+        peer_name: String,
+        plan_mode: bool,
     },
     /// Delete a `/model-cursor` Cursor agent (leave client mode or quit).
     DeleteCursorAgent {
@@ -1649,6 +1652,7 @@ pub enum Effect {
         reply_to: Option<String>,
         from_name: String,
         from_session_id: String,
+        plan_mode: bool,
     },
     /// Fetch changelog from CDN (both markdown + structured JSON).
     /// Runs off the render path via `spawn_blocking`. Result is cached

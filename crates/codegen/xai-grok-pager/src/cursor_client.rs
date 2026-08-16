@@ -253,7 +253,6 @@ pub fn finish_cursor_run(agent: &mut AgentView) -> bool {
     let streamed = !client.streamed_text.trim().is_empty();
     let stream_entry = client.stream_entry.take();
     client.streamed_text.clear();
-    drop(client);
     if let Some(id) = stream_entry {
         agent.scrollback.set_entry_running(id, false);
     }

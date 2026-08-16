@@ -11,6 +11,7 @@ pub mod client;
 pub mod discover;
 pub mod error;
 pub mod handshake;
+pub mod peers_mcp;
 pub mod transport;
 
 /// Generated `sdk.v1` protobuf types (tonic stubs are unused).
@@ -22,9 +23,9 @@ pub mod pb {
 pub use auth::{CURSOR_API_KEY_ENV, read_stored_cursor_api_key, resolve_cursor_api_key};
 pub use bridge::{BridgeHandle, BridgeManager};
 pub use client::{
-    CreateLocalAgentOptions, CursorRunEvent, CursorRunEventKind, CursorSdkClient, PeersMcpIdentity,
-    agent_mode_i32, peers_mcp_servers,
+    CreateLocalAgentOptions, CursorRunEvent, CursorRunEventKind, CursorSdkClient, agent_mode_i32,
 };
-pub use discover::{BRIDGE_BIN_ENV, discover_bridge_bin};
+pub use discover::{BRIDGE_BIN_ENV, discover_bridge_bin, resolve_grok_bin};
 pub use error::CursorSdkError;
 pub use handshake::{READY_LINE_PREFIX, ReadyInfo, parse_ready_line};
+pub use peers_mcp::{PeersMcpIdentity, peers_mcp_servers, preflight_peers_mcp};

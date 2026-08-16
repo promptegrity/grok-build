@@ -33,7 +33,11 @@ pub enum Command {
     LogoutCursor,
     /// Stdio MCP server: list_peers / send_message (used by /model-cursor)
     #[command(name = "peers-mcp", hide = true)]
-    PeersMcp,
+    PeersMcp {
+        /// Handshake initialize + tools/list in-process and exit.
+        #[arg(long, hide = true)]
+        selftest: bool,
+    },
     /// Sign in to Grok
     Login {
         /// Ignored (kept for backwards compatibility). OAuth2 is now the only auth method.
@@ -1448,7 +1452,20 @@ mod tests {
     #[test]
     fn peers_mcp_parses() {
         let args = PagerArgs::try_parse_from(["grok", "peers-mcp"]).expect("peers-mcp");
-        assert!(matches!(args.command, Some(Command::PeersMcp)));
+        assert!(matches!(
+            args.command,
+            Some(Command::PeersMcp { selftest: false })
+        ));
+    }
+
+    #[test]
+    fn peers_mcp_selftest_parses() {
+        let args =
+            PagerArgs::try_parse_from(["grok", "peers-mcp", "--selftest"]).expect("selftest");
+        assert!(matches!(
+            args.command,
+            Some(Command::PeersMcp { selftest: true })
+        ));
     }
     #[test]
     fn positional_prompt_conflicts_with_headless_single() {

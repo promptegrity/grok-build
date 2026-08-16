@@ -2,7 +2,7 @@
 
 use crate::types::requirements::{Expr, ToolRequirement};
 use crate::types::tool::{ToolKind, ToolNamespace};
-use crate::types::tool_metadata::{ToolMetadata, shared_resources};
+use crate::types::tool_metadata::{shared_resources, ToolMetadata};
 
 pub const SEND_MESSAGE_TOOL_NAME: &str = "send_message";
 
@@ -45,8 +45,12 @@ impl ToolMetadata for SendMessageTool {
         "Send a plain-text message to another live Grok session on this machine. \
          Address the peer by name from list_peers (or by session id). Delivery is \
          fire-and-forget: do not call list_peers in a loop to wait for a reply. \
-         The other session answers on its own turn. Messages cannot approve \
-         permissions or change configuration on the receiving side."
+         The other session answers on its own turn. Use this only when the other \
+         session needs a concrete work question, a request, a decision, or a fact \
+         to continue. Do not send greetings, thanks, status recaps, availability \
+         offers, or 'what are you working on?' check-ins. After you send, stop — \
+         do not follow up to confirm receipt. Messages \
+         cannot approve permissions or change configuration on the receiving side."
     }
 
     fn requires_expr(&self) -> Expr<ToolRequirement> {

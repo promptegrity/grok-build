@@ -4811,23 +4811,19 @@ async fn create_cursor_agent(
     peer_name: String,
     plan_mode: bool,
 ) -> Result<String, String> {
-    let client = xai_grok_tools::implementations::cursor::shared_client(cwd)
+    let client = xai_grok_tools::implementations::cursor::shared_client(cwd.clone())
         .map_err(|e| e.to_string())?;
-    let grok_bin = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.to_str().map(str::to_string))
-        .unwrap_or_else(|| "grok".into());
     let created = client
         .create_local_agent_with(
             model_id,
             Some("grok-cursor-client".into()),
             xai_grok_cursor_sdk::CreateLocalAgentOptions {
                 plan_mode,
-                peers_mcp: Some(xai_grok_cursor_sdk::PeersMcpIdentity {
-                    grok_bin,
+                peers_mcp: Some(xai_grok_cursor_sdk::PeersMcpIdentity::for_seat(
                     session_id,
                     peer_name,
-                }),
+                    &cwd,
+                )),
             },
         )
         .await

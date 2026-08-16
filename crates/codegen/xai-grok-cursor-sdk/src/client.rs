@@ -1,5 +1,6 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::auth::resolve_cursor_api_key;
 use crate::bridge::{BridgeHandle, BridgeManager};
@@ -7,10 +8,10 @@ use crate::error::CursorSdkError;
 use crate::pb::{
     AgentModeOption, AgentOperationOptions, AgentOptions, CreateAgentRequest, CursorRequestOptions,
     DeleteAgentRequest, GetRunOptions, GetRunRequest, ListAgentsOptions, ListAgentsRequest,
-    ListModelsRequest, LocalAgentOptions, McpServerConfig, ModelSelection, RunLifecycleStatus,
-    RunStreamMessage, SendOptions, SendRequest, StdioMcpServerConfig, UserMessage,
-    WaitLiveRunRequest, mcp_server_config, run_stream_message,
+    ListModelsRequest, LocalAgentOptions, ModelSelection, RunLifecycleStatus, RunStreamMessage,
+    SendOptions, SendRequest, UserMessage, WaitLiveRunRequest, run_stream_message,
 };
+use crate::peers_mcp::{PeersMcpIdentity, peers_mcp_servers, preflight_peers_mcp};
 use crate::transport;
 
 const AGENT_SERVICE: &str = "sdk.v1.SdkAgentService";
@@ -21,6 +22,7 @@ pub struct CursorSdkClient {
     manager: BridgeManager,
     api_key: String,
     workspace: PathBuf,
+    peers_mcp_by_agent: Mutex<HashMap<String, PeersMcpIdentity>>,
 }
 
 impl CursorSdkClient {
@@ -33,6 +35,7 @@ impl CursorSdkClient {
             manager: BridgeManager::new(workspace.clone(), api_key.clone()),
             api_key,
             workspace,
+            peers_mcp_by_agent: Mutex::new(HashMap::new()),
         })
     }
 
@@ -77,6 +80,11 @@ impl CursorSdkClient {
         name: Option<String>,
         options: CreateLocalAgentOptions,
     ) -> Result<CreateAgentResult, CursorSdkError> {
+        if let Some(identity) = options.peers_mcp.as_ref() {
+            preflight_peers_mcp(identity)
+                .await
+                .map_err(CursorSdkError::message)?;
+        }
         let handle = self.handle().await?;
         let cwd = self
             .workspace
@@ -109,6 +117,9 @@ impl CursorSdkClient {
             },
         )
         .await?;
+        if let Some(identity) = options.peers_mcp {
+            self.remember_peers_identity(&resp.agent_id, identity);
+        }
         Ok(CreateAgentResult {
             agent_id: resp.agent_id,
             model: resp.model.map(|m| m.id).unwrap_or_default(),
@@ -128,24 +139,14 @@ impl CursorSdkClient {
         mut on_event: impl FnMut(CursorRunEvent),
     ) -> Result<SendResult, CursorSdkError> {
         let handle = self.handle().await?;
+        let peers_mcp = self.peers_identity_for(agent_id);
         let outcome = transport::server_stream_outcome_on(
             handle.http(),
             &handle.url,
             AGENT_SERVICE,
             "Send",
             &handle.bearer,
-            &SendRequest {
-                agent_id: agent_id.to_string(),
-                message: Some(UserMessage {
-                    text: text.to_string(),
-                    images: Vec::new(),
-                }),
-                options: Some(SendOptions {
-                    mode: agent_mode_i32(plan_mode),
-                    ..Default::default()
-                }),
-                idempotency_key: None,
-            },
+            &build_send_request(agent_id, text, plan_mode, &peers_mcp),
             |msg| {
                 if let Some(event) = run_event(msg) {
                     on_event(event);
@@ -267,8 +268,31 @@ impl CursorSdkClient {
         })
     }
 
+    fn remember_peers_identity(&self, agent_id: &str, identity: PeersMcpIdentity) {
+        self.peers_mcp_by_agent
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(agent_id.to_string(), identity);
+    }
+
+    fn forget_peers_identity(&self, agent_id: &str) {
+        self.peers_mcp_by_agent
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(agent_id);
+    }
+
+    fn peers_identity_for(&self, agent_id: &str) -> Option<PeersMcpIdentity> {
+        self.peers_mcp_by_agent
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(agent_id)
+            .cloned()
+    }
+
     /// Permanently delete a Cursor agent and its durable data.
     pub async fn delete_agent(&self, agent_id: &str) -> Result<(), CursorSdkError> {
+        self.forget_peers_identity(agent_id);
         let handle = self.handle().await?;
         let _: crate::pb::DeleteAgentResponse = transport::unary(
             handle.http(),
@@ -325,14 +349,6 @@ pub struct CreateLocalAgentOptions {
     pub peers_mcp: Option<PeersMcpIdentity>,
 }
 
-/// Seat identity passed into the `grok peers-mcp` stdio server.
-#[derive(Debug, Clone)]
-pub struct PeersMcpIdentity {
-    pub grok_bin: String,
-    pub session_id: String,
-    pub peer_name: String,
-}
-
 pub fn agent_mode_i32(plan_mode: bool) -> i32 {
     if plan_mode {
         AgentModeOption::Plan as i32
@@ -341,28 +357,25 @@ pub fn agent_mode_i32(plan_mode: bool) -> i32 {
     }
 }
 
-pub fn peers_mcp_servers(
-    identity: &Option<PeersMcpIdentity>,
-) -> std::collections::HashMap<String, McpServerConfig> {
-    let Some(id) = identity else {
-        return std::collections::HashMap::new();
-    };
-    let mut env = std::collections::HashMap::new();
-    env.insert("GROK_PEER_SESSION_ID".to_string(), id.session_id.clone());
-    env.insert("GROK_PEER_NAME".to_string(), id.peer_name.clone());
-    let mut servers = std::collections::HashMap::new();
-    servers.insert(
-        "grok-peers".to_string(),
-        McpServerConfig {
-            config: Some(mcp_server_config::Config::Stdio(StdioMcpServerConfig {
-                command: id.grok_bin.clone(),
-                args: vec!["peers-mcp".into()],
-                env,
-                cwd: String::new(),
-            })),
-        },
-    );
-    servers
+fn build_send_request(
+    agent_id: &str,
+    text: &str,
+    plan_mode: bool,
+    peers_mcp: &Option<PeersMcpIdentity>,
+) -> SendRequest {
+    SendRequest {
+        agent_id: agent_id.to_string(),
+        message: Some(UserMessage {
+            text: text.to_string(),
+            images: Vec::new(),
+        }),
+        options: Some(SendOptions {
+            mode: agent_mode_i32(plan_mode),
+            mcp_servers: peers_mcp_servers(peers_mcp),
+            ..Default::default()
+        }),
+        idempotency_key: None,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -626,28 +639,22 @@ mod tests {
     }
 
     #[test]
-    fn peers_mcp_stdio_config() {
-        let servers = peers_mcp_servers(&Some(PeersMcpIdentity {
+    fn send_request_includes_peers_mcp() {
+        let identity = PeersMcpIdentity {
             grok_bin: "/usr/bin/grok".into(),
             session_id: "sess".into(),
             peer_name: "cursor".into(),
-        }));
-        let cfg = servers.get("grok-peers").expect("grok-peers server");
-        match &cfg.config {
-            Some(mcp_server_config::Config::Stdio(stdio)) => {
-                assert_eq!(stdio.command, "/usr/bin/grok");
-                assert_eq!(stdio.args, vec!["peers-mcp"]);
-                assert_eq!(
-                    stdio.env.get("GROK_PEER_SESSION_ID").map(String::as_str),
-                    Some("sess")
-                );
-                assert_eq!(
-                    stdio.env.get("GROK_PEER_NAME").map(String::as_str),
-                    Some("cursor")
-                );
-            }
-            other => panic!("expected stdio config, got {other:?}"),
-        }
-        assert!(peers_mcp_servers(&None).is_empty());
+            cwd: "/tmp/ws".into(),
+            grok_home: "/tmp/home".into(),
+        };
+        let req = build_send_request("agent-1", "hi", false, &Some(identity));
+        let servers = req.options.expect("send options").mcp_servers;
+        assert!(servers.contains_key("grok-peers"));
+    }
+
+    #[test]
+    fn send_request_without_identity_has_empty_mcp() {
+        let req = build_send_request("agent-1", "hi", false, &None);
+        assert!(req.options.expect("send options").mcp_servers.is_empty());
     }
 }

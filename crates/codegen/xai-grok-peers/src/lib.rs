@@ -19,7 +19,7 @@ pub use inbox::{
 };
 pub use mcp::{
     PEER_NAME_ENV, PEER_SESSION_ID_ENV, PeerIdentity, handle_mcp_message, run_peers_mcp_stdio,
-    run_peers_mcp_stdio_with,
+    run_peers_mcp_stdio_with, selftest_peers_mcp,
 };
 pub use naming::{allocate_live_name, default_name_from_cwd, sanitize_peer_name};
 pub use registry::{

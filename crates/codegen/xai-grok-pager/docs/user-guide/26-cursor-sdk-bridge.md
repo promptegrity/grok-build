@@ -61,11 +61,11 @@ In a second terminal (after `grok login-cursor`):
 /model-cursor
 ```
 
-Pick a Cursor model from the dropdown (or type `/model-cursor composer-2`). Grok creates a local Cursor agent in the current workspace and attaches a `grok-peers` MCP (`list_peers` / `send_message`) under this session's peer name. After that:
+Pick a Cursor model from the dropdown (or type `/model-cursor composer-2`). Grok creates a local Cursor agent in the current workspace and attaches a `grok-peers` MCP (`list_peers` / `send_message`) under this session's peer name. The MCP is a stdio child of `grok peers-mcp` with `GROK_PEER_SESSION_ID`, `GROK_PEER_NAME`, and `GROK_HOME` set; it does **not** read `~/.cursor/mcp.json`. If that child fails its initialize/`tools/list` handshake, `/model-cursor` refuses to enter client mode and prints the resolved binary plus the error. After that:
 
 - Each prompt you type is sent to Cursor and the session waits for the reply. The Grok model is not in the loop. While Cursor works, this TUI shows a spinner with the current step and streams the reply as it arrives.
 - `/plan` (or Shift+Tab) on this session puts Cursor in its native plan mode for the next send. This is Cursor's plan mode, not Grok's `plan.md` approval overlay.
-- Peer messages from another Grok session are forwarded the same way. Cursor should reply with `send_message` to the named peer. This session does not send a second reply of its own (one fallback relay only if Cursor never called `send_message`).
+- Peer messages from another Grok session are forwarded the same way. Cursor should call `send_message` only when it has a question, a request, or a fact the named peer needs — not greetings or acknowledgements. This session does not send a second reply of its own (one fallback relay only if Cursor never called `send_message`).
 - `/model <grok-name>`, `/new` (`/clear`), `/home`, or `/quit` (`/exit`) leaves client mode and **deletes** the Cursor agent created for this session.
 
 The status bar shows `Cursor · {model}` while the mode is active.

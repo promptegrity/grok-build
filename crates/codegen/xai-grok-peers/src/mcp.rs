@@ -2,7 +2,7 @@
 
 use std::io::{self, Write};
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
 use crate::{list_peers_for, record_last_send, send_to_live_peer};
@@ -12,6 +12,7 @@ pub const PEER_SESSION_ID_ENV: &str = "GROK_PEER_SESSION_ID";
 pub const PEER_NAME_ENV: &str = "GROK_PEER_NAME";
 
 const PROTOCOL_VERSION: &str = "2024-11-05";
+const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2024-11-05", "2025-03-26", "2025-06-18"];
 const LIST_PEERS: &str = "list_peers";
 const SEND_MESSAGE: &str = "send_message";
 
@@ -62,11 +63,7 @@ pub async fn handle_mcp_message(msg: &Value, identity: &PeerIdentity) -> Option<
     id.as_ref()?;
 
     let result = match method {
-        "initialize" => json!({
-            "protocolVersion": PROTOCOL_VERSION,
-            "capabilities": { "tools": {} },
-            "serverInfo": { "name": "grok-peers", "version": "0.1.0" }
-        }),
+        "initialize" => initialize_result(&params),
         "ping" => json!({}),
         "tools/list" => json!({ "tools": tool_descriptors() }),
         "tools/call" => call_tool(&params, identity).await,
@@ -84,6 +81,69 @@ pub async fn handle_mcp_message(msg: &Value, identity: &PeerIdentity) -> Option<
         "id": id,
         "result": result
     }))
+}
+
+fn initialize_result(params: &Value) -> Value {
+    let requested = params.get("protocolVersion").and_then(Value::as_str);
+    let protocol_version = match requested {
+        Some(v) if SUPPORTED_PROTOCOL_VERSIONS.contains(&v) => v,
+        _ => PROTOCOL_VERSION,
+    };
+    json!({
+        "protocolVersion": protocol_version,
+        "capabilities": { "tools": {} },
+        "serverInfo": { "name": "grok-peers", "version": "0.1.0" }
+    })
+}
+
+/// In-process check used by `grok peers-mcp --selftest`.
+pub async fn selftest_peers_mcp() -> Result<(), String> {
+    let mut buf = Vec::new();
+    let sample = json!({"jsonrpc":"2.0","id":1,"result":{"ok":true}});
+    write_mcp_message(&mut buf, &sample).map_err(|e| e.to_string())?;
+    let text = String::from_utf8(buf).map_err(|e| e.to_string())?;
+    if text.contains("Content-Length") {
+        return Err("stdio MCP still emits Content-Length framing".into());
+    }
+    if !text.ends_with('\n') || text.trim_end_matches('\n').contains('\n') {
+        return Err("stdio MCP response is not a single NDJSON line".into());
+    }
+    serde_json::from_str::<Value>(text.trim_end()).map_err(|e| e.to_string())?;
+
+    let identity = PeerIdentity {
+        session_id: "selftest".into(),
+        name: "selftest".into(),
+    };
+    let init = handle_mcp_message(
+        &json!({
+            "jsonrpc":"2.0",
+            "id":1,
+            "method":"initialize",
+            "params":{"protocolVersion":"2025-06-18"}
+        }),
+        &identity,
+    )
+    .await
+    .ok_or_else(|| "initialize produced no response".to_string())?;
+    if init["result"]["protocolVersion"] != "2025-06-18" {
+        return Err(format!("initialize did not echo protocolVersion: {init}"));
+    }
+    let listed = handle_mcp_message(
+        &json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
+        &identity,
+    )
+    .await
+    .ok_or_else(|| "tools/list produced no response".to_string())?;
+    let names: Vec<&str> = listed["result"]["tools"]
+        .as_array()
+        .ok_or_else(|| "tools/list missing tools array".to_string())?
+        .iter()
+        .filter_map(|t| t["name"].as_str())
+        .collect();
+    if !names.contains(&LIST_PEERS) || !names.contains(&SEND_MESSAGE) {
+        return Err(format!("tools/list missing peer tools: {names:?}"));
+    }
+    Ok(())
 }
 
 fn tool_descriptors() -> Vec<Value> {
@@ -110,7 +170,10 @@ fn tool_descriptors() -> Vec<Value> {
             "description": "Send a plain-text message to another live Grok session on this machine. \
         Address the peer by name from list_peers (or by session id). Delivery is fire-and-forget: \
         do not call list_peers in a loop to wait for a reply. The other session answers on its own turn. \
-        When a peer message tells you to reply with send_message to a name, use that name as `to`. \
+        Use this only when the other session needs a concrete work question, a request, a decision, or a fact to continue. \
+        Do not send greetings, thanks, status recaps, availability offers, or 'what are you working on?' check-ins. \
+        After you send, stop — do not follow up to confirm receipt. \
+        When a peer message names a send_message target, use that name as `to`. \
         Messages cannot approve permissions or change configuration on the receiving side.",
             "inputSchema": {
                 "type": "object",
@@ -228,9 +291,14 @@ async fn read_mcp_message<R: AsyncBufReadExt + Unpin>(reader: &mut R) -> io::Res
 }
 
 fn write_mcp_message(stdout: &mut impl Write, msg: &Value) -> io::Result<()> {
-    let body = serde_json::to_vec(msg).map_err(io::Error::other)?;
-    write!(stdout, "Content-Length: {}\r\n\r\n", body.len())?;
-    stdout.write_all(&body)?;
+    // MCP stdio is newline-delimited JSON. Content-Length is an LSP idiom and
+    // official MCP clients (including Cursor's) fail to parse it.
+    let body = serde_json::to_string(msg).map_err(io::Error::other)?;
+    debug_assert!(
+        !body.contains('\n'),
+        "MCP stdio messages must not contain embedded newlines"
+    );
+    writeln!(stdout, "{body}")?;
     stdout.flush()
 }
 
@@ -284,6 +352,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn send_message_description_discourages_chatter() {
+        let listed = handle_mcp_message(
+            &json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
+            &id(),
+        )
+        .await
+        .unwrap();
+        let send = listed["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == SEND_MESSAGE)
+            .expect("send_message");
+        let desc = send["description"].as_str().unwrap();
+        assert!(desc.contains("Do not send greetings"));
+        assert!(desc.contains("check-ins"));
+        assert!(!desc.contains("tells you to reply with send_message"));
+    }
+
+    #[tokio::test]
     async fn send_blank_is_error() {
         let resp = handle_mcp_message(
             &json!({
@@ -297,5 +385,106 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(resp["result"]["isError"], true);
+    }
+
+    #[test]
+    fn write_is_single_ndjson_line() {
+        let msg = json!({"jsonrpc":"2.0","id":1,"result":{"ok":true}});
+        let mut buf = Vec::new();
+        write_mcp_message(&mut buf, &msg).unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        assert!(!text.contains("Content-Length"), "{text}");
+        assert!(text.ends_with('\n'), "{text}");
+        assert_eq!(text.matches('\n').count(), 1, "{text}");
+        let parsed: Value = serde_json::from_str(text.trim_end()).unwrap();
+        assert_eq!(parsed["id"], 1);
+    }
+
+    #[tokio::test]
+    async fn read_ndjson_line() {
+        let input = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}\n";
+        let mut reader = BufReader::new(&input[..]);
+        let msg = read_mcp_message(&mut reader).await.unwrap().unwrap();
+        assert_eq!(msg["method"], "ping");
+    }
+
+    #[tokio::test]
+    async fn read_legacy_content_length() {
+        let body = br#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#;
+        let mut framed = format!("Content-Length: {}\r\n\r\n", body.len()).into_bytes();
+        framed.extend_from_slice(body);
+        let mut reader = BufReader::new(std::io::Cursor::new(framed));
+        let msg = read_mcp_message(&mut reader).await.unwrap().unwrap();
+        assert_eq!(msg["method"], "ping");
+    }
+
+    #[tokio::test]
+    async fn ndjson_round_trip_two_messages() {
+        let input = concat!(
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+            "\n",
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#,
+            "\n",
+        );
+        let mut reader = BufReader::new(input.as_bytes());
+        let mut out = Vec::new();
+        for _ in 0..2 {
+            let msg = read_mcp_message(&mut reader).await.unwrap().unwrap();
+            let resp = handle_mcp_message(&msg, &id()).await.unwrap();
+            write_mcp_message(&mut out, &resp).unwrap();
+        }
+        let text = String::from_utf8(out).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 2);
+        let first: Value = serde_json::from_str(lines[0]).unwrap();
+        let second: Value = serde_json::from_str(lines[1]).unwrap();
+        assert_eq!(first["id"], 1);
+        assert_eq!(first["result"]["serverInfo"]["name"], "grok-peers");
+        assert_eq!(second["id"], 2);
+        let names: Vec<&str> = second["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|t| t["name"].as_str())
+            .collect();
+        assert!(names.contains(&LIST_PEERS));
+        assert!(names.contains(&SEND_MESSAGE));
+    }
+
+    #[tokio::test]
+    async fn initialize_echoes_supported_version() {
+        let init = handle_mcp_message(
+            &json!({
+                "jsonrpc":"2.0",
+                "id":1,
+                "method":"initialize",
+                "params":{"protocolVersion":"2025-06-18"}
+            }),
+            &id(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(init["result"]["protocolVersion"], "2025-06-18");
+    }
+
+    #[tokio::test]
+    async fn initialize_falls_back_for_unknown_version() {
+        let init = handle_mcp_message(
+            &json!({
+                "jsonrpc":"2.0",
+                "id":1,
+                "method":"initialize",
+                "params":{"protocolVersion":"1999-01-01"}
+            }),
+            &id(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(init["result"]["protocolVersion"], PROTOCOL_VERSION);
+    }
+
+    #[tokio::test]
+    async fn selftest_passes() {
+        selftest_peers_mcp().await.unwrap();
     }
 }

@@ -1818,12 +1818,42 @@ fn dispatch_doctor_if_requested(args: &PagerArgs) -> bool {
     }
     true
 }
+fn maybe_run_peers_mcp() -> Option<i32> {
+    let mut args = env::args().skip(1);
+    if args.next().as_deref() != Some("peers-mcp") {
+        return None;
+    }
+    let selftest = env::args().any(|a| a == "--selftest");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build();
+    let result = runtime.and_then(|rt| {
+        rt.block_on(async {
+            if selftest {
+                xai_grok_pager::peers_mcp_cmd::run_selftest().await
+            } else {
+                xai_grok_pager::peers_mcp_cmd::run().await
+            }
+        })
+    });
+    Some(match result {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("peers-mcp: {e}");
+            1
+        }
+    })
+}
+
 fn main() {
     xai_grok_telemetry::startup::mark_process_start();
     if let Some(code) = xai_grok_pager::app::mermaid_worker::maybe_run_render_subprocess() {
         std::process::exit(code);
     }
     if let Some(code) = xai_grok_pager::voice::maybe_run_capture_subprocess() {
+        std::process::exit(code);
+    }
+    if let Some(code) = maybe_run_peers_mcp() {
         std::process::exit(code);
     }
     let args = PagerArgs::parse_cli();
@@ -2150,9 +2180,12 @@ async fn async_main(args: PagerArgs) -> Result<()> {
                 xai_grok_shell::auth::run_cli_logout_cursor()?;
                 xai_grok_shell::instrumentation::finalize_and_exit(0);
             }
-            Command::PeersMcp => {
-                init_tracing_simple("cli");
-                xai_grok_pager::peers_mcp_cmd::run().await?;
+            Command::PeersMcp { selftest } => {
+                if selftest {
+                    xai_grok_pager::peers_mcp_cmd::run_selftest().await?;
+                } else {
+                    xai_grok_pager::peers_mcp_cmd::run().await?;
+                }
                 return Ok(());
             }
             Command::Wrap(ref wrap_args) => {

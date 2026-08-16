@@ -69,6 +69,10 @@ Ask api whether the migration finished
 
 Grok uses `list_peers` to find the target and `send_message` to deliver plain text. The receiving session sees the message as an injected turn, labeled with the sender's name and a reply address.
 
+### Keep messages useful
+
+Each inbound peer message starts a full model turn. Agents should send only when the other session needs a concrete work question, a request, a decision, or a fact to continue — not greetings, thanks, status recaps, availability offers, or "what are you working on?" check-ins. After sending, they stop; they do not follow up to confirm receipt. Without that, two sessions can spend tokens on a polite ping-pong.
+
 ### What a message can and cannot do
 
 - **Can**: pass a finding, status, or decision as plain text
@@ -85,7 +89,7 @@ Permission boundaries stay per-session. The receiving Grok still prompts you for
 3. `send_message` connects to the target inbox and writes one JSON line.
 4. The receiver injects the text into the next agent turn (or mid-turn via interjection).
 
-If the receiving session is in [Cursor client mode](26-cursor-sdk-bridge.md) (`/model-cursor`), it does **not** start a Grok turn. The pager is a TUI for the bound Cursor agent: it forwards the peer message (with a `send_message` reply address) and Cursor replies on the peer bus itself. `list_peers` / `/peers` show a `note` such as `cursor:composer-2` on that session. If Cursor does not call `send_message`, the seat falls back to one automatic relay so the sender is not left waiting.
+If the receiving session is in [Cursor client mode](26-cursor-sdk-bridge.md) (`/model-cursor`), it does **not** start a Grok turn. The pager is a TUI for the bound Cursor agent: it forwards the peer message (with a `send_message` reply address) and Cursor replies on the peer bus itself via the attached `grok-peers` MCP (`list_peers` / `send_message`). `list_peers` / `/peers` show a `note` such as `cursor:composer-2` on that session. If Cursor does not call `send_message`, the seat falls back to one automatic relay so the sender is not left waiting.
 
 Same-machine delivery never leaves your machine.
 

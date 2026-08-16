@@ -5,6 +5,31 @@ use crate::error::CursorSdkError;
 /// Override path to the sidecar binary.
 pub const BRIDGE_BIN_ENV: &str = "CURSOR_SDK_BRIDGE_BIN";
 
+/// Resolve the `grok` binary Cursor should spawn for `peers-mcp`.
+///
+/// `current_exe()` when it is a regular file, otherwise `which("grok")`,
+/// otherwise the bare name `"grok"` (PATH lookup at spawn time).
+pub fn resolve_grok_bin() -> String {
+    resolve_grok_bin_with(std::env::current_exe().ok(), |name| which::which(name).ok())
+}
+
+pub(crate) fn resolve_grok_bin_with(
+    current_exe: Option<PathBuf>,
+    lookup_path: impl Fn(&str) -> Option<PathBuf>,
+) -> String {
+    if let Some(exe) = current_exe {
+        let resolved = dunce_canonicalize(&exe).unwrap_or(exe);
+        if resolved.is_file() {
+            return resolved.to_string_lossy().into_owned();
+        }
+    }
+    let grok_name = if cfg!(windows) { "grok.exe" } else { "grok" };
+    if let Some(path) = lookup_path(grok_name) {
+        return path.to_string_lossy().into_owned();
+    }
+    grok_name.to_string()
+}
+
 /// Locate `cursor-sdk-bridge`: env → sibling of `current_exe` → `~/.grok/bin` → PATH.
 pub fn discover_bridge_bin() -> Result<PathBuf, CursorSdkError> {
     discover_bridge_bin_with(
@@ -104,8 +129,8 @@ mod tests {
             })
             .unwrap();
         assert_eq!(
-            std::fs::canonicalize(&got).unwrap(),
-            std::fs::canonicalize(&bridge).unwrap()
+            dunce::canonicalize(&got).unwrap(),
+            dunce::canonicalize(&bridge).unwrap()
         );
     }
 
@@ -151,5 +176,36 @@ mod tests {
         .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains(BRIDGE_BIN_ENV), "{msg}");
+    }
+
+    #[test]
+    fn resolve_prefers_current_exe_when_it_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("xai-grok-pager");
+        touch_exec(&exe);
+        let got = resolve_grok_bin_with(Some(exe.clone()), |_| {
+            panic!("PATH should not be consulted")
+        });
+        assert_eq!(
+            dunce::canonicalize(&got).unwrap(),
+            dunce::canonicalize(&exe).unwrap()
+        );
+    }
+
+    #[test]
+    fn resolve_falls_back_to_path_when_current_exe_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let on_path = dir.path().join("grok");
+        touch_exec(&on_path);
+        let got =
+            resolve_grok_bin_with(Some(dir.path().join("missing")), |_| Some(on_path.clone()));
+        assert_eq!(got, on_path.to_string_lossy());
+    }
+
+    #[test]
+    fn resolve_falls_back_to_bare_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let got = resolve_grok_bin_with(Some(dir.path().join("missing")), |_| None);
+        assert_eq!(got, "grok");
     }
 }

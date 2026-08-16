@@ -341,7 +341,8 @@ pub fn activate_on_agent(
         .scrollback
         .push_block(crate::scrollback::block::RenderBlock::system(format!(
             "Cursor client mode: {display_name}. This session is a TUI for Cursor \
-             (prompts, /plan, and peer inbox). Cursor replies with send_message. \
+             (prompts, /plan, and peer inbox). Cursor should send_message only \
+             for a work question, request, or fact — not greetings. \
              /model <grok> returns to Grok."
         )));
 }

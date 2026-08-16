@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use crate::types::requirements::{Expr, ToolRequirement};
 use crate::types::resources::Cwd;
 use crate::types::tool::{ToolKind, ToolNamespace};
-use crate::types::tool_metadata::{ToolMetadata, shared_resources};
-use xai_grok_cursor_sdk::{CursorSdkClient, read_stored_cursor_api_key};
+use crate::types::tool_metadata::{shared_resources, ToolMetadata};
+use xai_grok_cursor_sdk::{read_stored_cursor_api_key, CursorSdkClient};
 
 /// Session-injected Cursor SDK client (one sidecar per Grok process).
 #[derive(Clone)]
@@ -280,21 +280,22 @@ impl xai_tool_runtime::Tool for CursorCreateAgentTool {
             .filter(|s| !s.is_empty())
             .unwrap_or("cursor")
             .to_string();
-        let grok_bin = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.to_str().map(str::to_string))
-            .unwrap_or_else(|| "grok".into());
+        let cwd = {
+            let resources = shared_resources(&ctx)?;
+            let res = resources.lock().await;
+            res.get::<Cwd>()
+                .map(|c| c.0.clone())
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+        };
         let created = client
             .create_local_agent_with(
                 model,
                 input.name,
                 xai_grok_cursor_sdk::CreateLocalAgentOptions {
                     plan_mode: false,
-                    peers_mcp: Some(xai_grok_cursor_sdk::PeersMcpIdentity {
-                        grok_bin,
-                        session_id,
-                        peer_name,
-                    }),
+                    peers_mcp: Some(xai_grok_cursor_sdk::PeersMcpIdentity::for_seat(
+                        session_id, peer_name, &cwd,
+                    )),
                 },
             )
             .await
